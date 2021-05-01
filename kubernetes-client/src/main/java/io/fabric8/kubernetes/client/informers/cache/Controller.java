@@ -20,11 +20,9 @@ import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.dsl.base.OperationContext;
 import io.fabric8.kubernetes.client.informers.ListerWatcher;
 import io.fabric8.kubernetes.client.informers.ResyncRunnable;
-import io.fabric8.kubernetes.client.informers.SharedInformerEventListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -59,11 +57,9 @@ public class Controller<T extends HasMetadata, L extends KubernetesResourceList<
 
   private final OperationContext operationContext;
 
-  private final ConcurrentLinkedQueue<SharedInformerEventListener> eventListeners;
-
   private final Class<T> apiTypeClass;
   
-  Controller(Class<T> apiTypeClass, Store<T> store, ListerWatcher<T, L> listerWatcher, Supplier<Boolean> resyncFunc, long fullResyncPeriod, OperationContext context, ConcurrentLinkedQueue<SharedInformerEventListener> eventListeners, ScheduledExecutorService resyncExecutor) {
+  Controller(Class<T> apiTypeClass, Store<T> store, ListerWatcher<T, L> listerWatcher, Supplier<Boolean> resyncFunc, long fullResyncPeriod, OperationContext context, ScheduledExecutorService resyncExecutor) {
     this.store = store;
     this.listerWatcher = listerWatcher;
     this.apiTypeClass = apiTypeClass;
@@ -73,27 +69,21 @@ public class Controller<T extends HasMetadata, L extends KubernetesResourceList<
     }
     this.fullResyncPeriod = fullResyncPeriod;
     this.operationContext = context;
-    this.eventListeners = eventListeners;
 
     this.reflector = new Reflector<>(apiTypeClass, listerWatcher, store, operationContext);
     this.resyncExecutor = resyncExecutor;
   }
 
-  public Controller(Class<T> apiTypeClass, Store<T> store, ListerWatcher<T, L> listerWatcher, Supplier<Boolean> resyncFunc, long fullResyncPeriod, OperationContext context, ConcurrentLinkedQueue<SharedInformerEventListener> eventListeners) {
-      this(apiTypeClass, store, listerWatcher, resyncFunc, fullResyncPeriod, context, eventListeners, Executors.newSingleThreadScheduledExecutor());
+  public Controller(Class<T> apiTypeClass, Store<T> store, ListerWatcher<T, L> listerWatcher, Supplier<Boolean> resyncFunc, long fullResyncPeriod, OperationContext context) {
+      this(apiTypeClass, store, listerWatcher, resyncFunc, fullResyncPeriod, context, Executors.newSingleThreadScheduledExecutor());
   }
 
   public void run() {
-    log.info("informer#Controller: ready to run resync and reflector runnable");
+    log.info("informer#Controller: ready to run resync and reflector runnable for {}", apiTypeClass);
 
     scheduleResync();
     
-    try {
-      reflector.listAndWatch();
-    } catch (Exception exception) {
-      log.warn("Reflector list-watching job exiting because the thread-pool is shutting down", exception);
-      this.eventListeners.forEach(listener -> listener.onException(exception));
-    }
+    reflector.listAndWatch();
   }
 
   void scheduleResync() {
@@ -102,7 +92,7 @@ public class Controller<T extends HasMetadata, L extends KubernetesResourceList<
       ResyncRunnable resyncRunnable = new ResyncRunnable(store, resyncFunc);
       resyncFuture = resyncExecutor.scheduleWithFixedDelay(resyncRunnable, fullResyncPeriod, fullResyncPeriod, TimeUnit.MILLISECONDS);
     } else {
-      log.info("informer#Controller: resync skipped due to 0 full resync period");
+      log.info("informer#Controller: resync skipped due to 0 full resync period {}", apiTypeClass);
     }
   }
 

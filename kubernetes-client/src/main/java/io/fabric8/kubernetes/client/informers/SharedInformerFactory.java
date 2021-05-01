@@ -274,7 +274,8 @@ public class SharedInformerFactory extends BaseOperation {
   }
 
   /**
-   * Starts all registered informers.
+   * Starts all registered informers in an asynchronous fashion.
+   * <br>use {@link #addSharedInformerEventListener(SharedInformerEventListener)} to receive startup errors. 
    */
   public synchronized void startAllRegisteredInformers() {
     if (informers.isEmpty()) {

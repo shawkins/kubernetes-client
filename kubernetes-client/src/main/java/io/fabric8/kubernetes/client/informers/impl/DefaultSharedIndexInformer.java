@@ -49,6 +49,8 @@ public class DefaultSharedIndexInformer<T extends HasMetadata, L extends Kuberne
   // AddEventHandler(i.e they don't specify one and just want to use the shared informer's default
   // value).
   private long defaultEventHandlerResyncPeriod;
+  
+  private final ConcurrentLinkedQueue<SharedInformerEventListener> eventListeners;
 
   private Cache<T> indexer;
 
@@ -56,14 +58,13 @@ public class DefaultSharedIndexInformer<T extends HasMetadata, L extends Kuberne
 
   private Controller<T, L> controller;
 
-  private Thread controllerThread;
-
   private volatile boolean started = false;
   private volatile boolean stopped = false;
 
   public DefaultSharedIndexInformer(Class<T> apiTypeClass, ListerWatcher<T, L> listerWatcher, long resyncPeriod, OperationContext context, ConcurrentLinkedQueue<SharedInformerEventListener> eventListeners) {
     this.resyncCheckPeriodMillis = resyncPeriod;
     this.defaultEventHandlerResyncPeriod = resyncPeriod;
+    this.eventListeners = eventListeners;
 
     this.processor = new SharedProcessor<>();
     this.indexer = new Cache<>();
@@ -71,8 +72,7 @@ public class DefaultSharedIndexInformer<T extends HasMetadata, L extends Kuberne
     
     ProcessorStore<T> processorStore = new ProcessorStore<>(this.indexer, this.processor);
 
-    this.controller = new Controller<>(apiTypeClass, processorStore, listerWatcher, processor::shouldResync, resyncCheckPeriodMillis, context, eventListeners);
-    controllerThread = new Thread(controller::run, "informer-controller-" + apiTypeClass.getSimpleName());
+    this.controller = new Controller<>(apiTypeClass, processorStore, listerWatcher, processor::shouldResync, resyncCheckPeriodMillis, context);
   }
 
   /**
@@ -140,8 +140,14 @@ public class DefaultSharedIndexInformer<T extends HasMetadata, L extends Kuberne
 
     started = true;
 
-    this.processor.run();
-    controllerThread.start();
+    try {
+      this.processor.run();
+      this.controller.run();
+    } catch (RuntimeException exception) {
+      log.warn("Reflector list-watching job exiting because the initial list and watch failed", exception);
+      this.eventListeners.forEach(listener -> listener.onException(exception));
+      throw exception;
+    }
   }
 
   @Override
@@ -152,7 +158,6 @@ public class DefaultSharedIndexInformer<T extends HasMetadata, L extends Kuberne
 
     stopped = true;
     controller.stop();
-    controllerThread.interrupt();
 
     processor.stop();
   }

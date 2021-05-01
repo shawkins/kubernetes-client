@@ -48,7 +48,6 @@ class ControllerTest {
   private static final Long WAIT_TIME = 500L;
   private final ListerWatcher<Pod, PodList> listerWatcher = Mockito.mock(AbstractPodListerWatcher.class, Mockito.RETURNS_DEEP_STUBS);
   private final OperationContext operationContext = Mockito.mock(OperationContext.class, Mockito.RETURNS_DEEP_STUBS);
-  private final ConcurrentLinkedQueue<SharedInformerEventListener> eventListeners = Mockito.mock(ConcurrentLinkedQueue.class, Mockito.RETURNS_DEEP_STUBS);
 
   @Test
   @DisplayName("Controller initialized with resync period greater than zero should use provided resync period")
@@ -56,7 +55,7 @@ class ControllerTest {
     // Given + When
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      1000L, operationContext, eventListeners);
+      1000L, operationContext);
 
     // Then
     assertEquals(1000L, controller.getFullResyncPeriod());
@@ -67,7 +66,7 @@ class ControllerTest {
   void testControllerCreationWithResyncPeriodLessThanZero() {
     assertThrows(IllegalArgumentException.class, () -> new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      -1000L, operationContext, eventListeners));
+      -1000L, operationContext));
   }
 
   @Test
@@ -76,7 +75,7 @@ class ControllerTest {
     // Given + When
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      0L, operationContext, eventListeners);
+      0L, operationContext);
 
     // Then
     assertEquals(0L, controller.getFullResyncPeriod());
@@ -88,7 +87,7 @@ class ControllerTest {
     // Given
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      1000L, operationContext, eventListeners);
+      1000L, operationContext);
 
     // When
     controller.stop();
@@ -102,7 +101,7 @@ class ControllerTest {
     // Given + When
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      10L, operationContext, eventListeners);
+      10L, operationContext);
     Thread controllerThread = newControllerThread(controller);
     controllerThread.start();
     // Then
@@ -126,7 +125,7 @@ class ControllerTest {
           controllerThreadWrapper.interrupt();
         return true;
       },
-      fullResyncPeriod, operationContext, eventListeners);
+      fullResyncPeriod, operationContext);
     Thread controllerThread = newControllerThread(controller);
     controllerThreadWrapper.thread = controllerThread; // put the thread in the wrapper, so the lamba can interrupt it
     controllerThread.start();
@@ -143,7 +142,7 @@ class ControllerTest {
     // Given + When
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      1L, operationContext, eventListeners);
+      1L, operationContext);
     Thread controllerThread = newControllerThread(controller);
     controllerThread.start();
     controller.stop();
@@ -168,7 +167,7 @@ class ControllerTest {
         }
         return true;
       },
-      fullResyncPeriod, operationContext, eventListeners);
+      fullResyncPeriod, operationContext);
 
     Executable controllerRun = newControllerRun(controller);
     assertDoesNotThrow(controllerRun);
@@ -184,7 +183,7 @@ class ControllerTest {
     // Given + When
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      1L, operationContext, eventListeners);
+      1L, operationContext);
     Executable controllerRun = newControllerRun(controller);
     assertDoesNotThrow(controllerRun);
     ScheduledExecutorService resyncExecutor = controller.getResyncExecutor();
@@ -199,7 +198,7 @@ class ControllerTest {
     // Given + When
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      1L, operationContext, eventListeners);
+      1L, operationContext);
     Executable controllerRun = newControllerRun(controller);
     assertDoesNotThrow(controllerRun);
     ScheduledExecutorService resyncExecutor = controller.getResyncExecutor();
@@ -215,7 +214,7 @@ class ControllerTest {
     // Given + When
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      0L, operationContext, eventListeners);
+      0L, operationContext);
     Thread controllerThread = newControllerThread(controller);
     controllerThread.start();
     controller.stop();
@@ -235,7 +234,7 @@ class ControllerTest {
     final CountDownLatch countDown = new CountDownLatch(numberOfResyncs);
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> {countDown.countDown(); return true;},
-      fullResyncPeriod, operationContext, eventListeners);
+      fullResyncPeriod, operationContext);
 
     Executable controllerRun = newControllerRun(controller);
     assertDoesNotThrow(controllerRun);
@@ -257,7 +256,7 @@ class ControllerTest {
     final CountDownLatch countDown = new CountDownLatch(count);
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> {countDown.countDown(); return true;},
-      0, operationContext, eventListeners);
+      0, operationContext);
     Executable controllerRun = newControllerRun(controller);
     assertDoesNotThrow(controllerRun);
     countDown.await(1000, TimeUnit.MILLISECONDS);
@@ -296,7 +295,7 @@ class ControllerTest {
     ScheduledExecutorService scheduledExecutorService = Mockito.mock(ScheduledExecutorService.class, Mockito.RETURNS_DEEP_STUBS);
     Controller<Pod, PodList> controller = new Controller<>(Pod.class, deltaFIFO, listerWatcher,
       () -> true,
-      1L, operationContext, eventListeners, scheduledExecutorService);
+      1L, operationContext, scheduledExecutorService);
 
     // When
     controller.scheduleResync();

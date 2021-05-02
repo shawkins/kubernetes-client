@@ -122,13 +122,13 @@ import io.fabric8.kubernetes.client.extended.run.RunConfigBuilder;
 import io.fabric8.kubernetes.client.extended.run.RunOperations;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import io.fabric8.kubernetes.client.utils.Serialization;
+import io.fabric8.kubernetes.client.utils.Utils;
+
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ThreadFactory;
 
 import okhttp3.OkHttpClient;
 
@@ -577,16 +577,7 @@ public class DefaultKubernetesClient extends BaseClient implements NamespacedKub
    */
   @Override
   public SharedInformerFactory informers() {
-    return new SharedInformerFactory(Executors.newCachedThreadPool(new ThreadFactory() {
-      ThreadFactory defaultThreadFactory = Executors.defaultThreadFactory();
-      
-      @Override
-      public Thread newThread(Runnable r) {
-        Thread t = defaultThreadFactory.newThread(r);
-        t.setDaemon(true);
-        return t;
-      }
-    }), httpClient, getConfiguration());
+    return new SharedInformerFactory(Executors.newCachedThreadPool(Utils.daemonThreadFactory(this)), httpClient, getConfiguration());
   }
 
   /**

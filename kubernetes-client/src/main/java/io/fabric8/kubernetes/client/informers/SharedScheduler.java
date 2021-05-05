@@ -48,6 +48,7 @@ public class SharedScheduler {
     if (executor == null) {
       // start the executor and add a ttl task
       executor = new ScheduledThreadPoolExecutor(1, Utils.daemonThreadFactory(this));
+      executor.setRemoveOnCancelPolicy(true);
       executor.scheduleWithFixedDelay(this::shutdownCheck, ttlMillis, ttlMillis, TimeUnit.MILLISECONDS);
     }
     return executor.scheduleWithFixedDelay(command, initialDelay, delay, unit);

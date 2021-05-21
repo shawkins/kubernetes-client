@@ -22,14 +22,12 @@ import io.fabric8.kubernetes.client.CustomResourceList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
-import io.fabric8.kubernetes.client.dsl.base.CustomResourceDefinitionContext;
 import io.fabric8.kubernetes.client.mock.crd.Star;
 import io.fabric8.kubernetes.client.mock.crd.StarSpec;
 import io.fabric8.kubernetes.client.mock.crd.StarStatus;
 import io.fabric8.kubernetes.client.server.mock.EnableKubernetesMockClient;
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
 import okhttp3.mockwebserver.RecordedRequest;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.HttpURLConnection;
@@ -41,18 +39,11 @@ import static org.junit.Assert.assertTrue;
 
 @EnableKubernetesMockClient
 class TypedClusterScopeCustomResourceApiTest {
-  
+
     KubernetesMockServer server;
     KubernetesClient client;
 
     private MixedOperation<Star, KubernetesResourceList<Star>, Resource<Star>> starClient;
-    
-    private CustomResourceDefinitionContext crdContext;
-
-    @BeforeEach
-    void setupCrd() {
-      crdContext = CustomResourceDefinitionContext.fromCustomResourceType(Star.class);
-    }
 
     @Test
     void create() {

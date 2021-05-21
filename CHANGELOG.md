@@ -3,6 +3,7 @@
 ### 5.5-SNAPSHOT
 
 #### Bugs
+* Fix #3144 walking back the assumption that /status should be a subresource, now it will be only if a registered crd indicates that it should be
 
 #### Improvements
 * Fix #3135 added mock crud support for patch status, and will return exceptions for unsupported patch types

@@ -20,6 +20,7 @@ import io.fabric8.kubernetes.client.dsl.Namespaceable;
 import io.fabric8.kubernetes.client.extended.leaderelection.resourcelock.LeaderElectionRecord;
 import io.fabric8.kubernetes.client.extended.leaderelection.resourcelock.Lock;
 import io.fabric8.kubernetes.client.extended.leaderelection.resourcelock.LockException;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,10 +31,7 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -98,10 +96,9 @@ public class LeaderElector<C extends Namespaceable<C> & KubernetesClient> {
     final String lockDescription = leaderElectionConfig.getLock().describe();
     LOGGER.debug("Attempting to renew leader lease '{}'...", lockDescription);
     loop(abortLatch -> {
-      final ExecutorService timeoutExecutorService = Executors.newSingleThreadScheduledExecutor();
       final CountDownLatch renewSignal = new CountDownLatch(1);
+      Future<?> renewFuture = ThreadUtils.submit(() -> renew(abortLatch, renewSignal));
       try {
-        timeoutExecutorService.submit(() -> renew(abortLatch, renewSignal));
         if (!renewSignal.await(leaderElectionConfig.getRenewDeadline().toMillis(), TimeUnit.MILLISECONDS)) {
           LOGGER.debug("Renew deadline reached after {} seconds while renewing lock {}",
             leaderElectionConfig.getRenewDeadline().get(ChronoUnit.SECONDS), lockDescription);
@@ -110,7 +107,7 @@ public class LeaderElector<C extends Namespaceable<C> & KubernetesClient> {
       } catch(InterruptedException ex) {
         Thread.currentThread().interrupt();
       } finally {
-        timeoutExecutorService.shutdown();
+        renewFuture.cancel(true);
       }
     }, leaderElectionConfig.getRetryPeriod().toMillis());
   }
@@ -192,9 +189,8 @@ public class LeaderElector<C extends Namespaceable<C> & KubernetesClient> {
    * @return true if the current thread was not interrupted, false otherwise
    */
   protected static boolean loop(Consumer<CountDownLatch> consumer, long periodInMillis) {
-    final ScheduledExecutorService singleThreadExecutorService = Executors.newSingleThreadScheduledExecutor();
     final CountDownLatch countDownLatch = new CountDownLatch(1);
-    final Future<?> future = singleThreadExecutorService.scheduleAtFixedRate(
+    final Future<?> future = ThreadUtils.scheduleWithFixedDelay(
       () -> consumer.accept(countDownLatch), 0L, periodInMillis, TimeUnit.MILLISECONDS);
     try {
       countDownLatch.await();
@@ -205,7 +201,6 @@ public class LeaderElector<C extends Namespaceable<C> & KubernetesClient> {
       return false;
     } finally {
       future.cancel(true);
-      singleThreadExecutorService.shutdownNow();
     }
   }
 

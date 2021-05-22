@@ -25,6 +25,8 @@ import io.fabric8.kubernetes.client.dsl.ExecWatch;
 import io.fabric8.kubernetes.client.dsl.base.OperationSupport;
 import io.fabric8.kubernetes.client.utils.InputStreamPumper;
 import io.fabric8.kubernetes.client.utils.NonBlockingInputStreamPumper;
+import io.fabric8.kubernetes.client.utils.SerialScheduledExecutor;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import io.fabric8.kubernetes.client.utils.Utils;
 import okhttp3.Response;
 import okhttp3.WebSocket;
@@ -39,14 +41,12 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static io.fabric8.kubernetes.client.utils.Utils.closeQuietly;
-import static io.fabric8.kubernetes.client.utils.Utils.shutdownExecutorService;
 
 /**
  * A {@link WebSocketListener} for exec operations.
@@ -78,7 +78,7 @@ public class ExecWebSocketListener extends WebSocketListener implements ExecWatc
     private final PipedInputStream errorChannel;
 
     private final AtomicReference<WebSocket> webSocketRef = new AtomicReference<>();
-    private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+    private final SerialScheduledExecutor executorService = ThreadUtils.newSerialScheduledExecutor();
     private final InputStreamPumper pumper;
 
     private final AtomicBoolean started = new AtomicBoolean(false);
@@ -163,7 +163,7 @@ public class ExecWebSocketListener extends WebSocketListener implements ExecWatc
 
     try {
       closeQuietly(pumper);
-      shutdownExecutorService(executorService);
+      executorService.terminate();
     } finally {
       closeQuietly(toClose);
     }
@@ -206,7 +206,7 @@ public class ExecWebSocketListener extends WebSocketListener implements ExecWatc
 
             webSocketRef.set(webSocket);
             if (!executorService.isShutdown()) {
-              executorService.submit(pumper);
+              executorService.execute(pumper);
               started.set(true);
               queue.add(true);
             }

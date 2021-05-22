@@ -24,15 +24,14 @@ import io.fabric8.kubernetes.client.dsl.RollableScalableResource;
 import io.fabric8.kubernetes.client.dsl.base.HasMetadataOperation;
 import io.fabric8.kubernetes.client.dsl.base.PatchContext;
 import io.fabric8.kubernetes.client.dsl.internal.RollingOperationContext;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import io.fabric8.kubernetes.client.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
@@ -126,8 +125,7 @@ public abstract class RollableScalableResourceOperation<T extends HasMetadata, L
       }
     };
 
-    ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-    ScheduledFuture poller = executor.scheduleWithFixedDelay(tPoller, 0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    Future<?> poller = ThreadUtils.scheduleWithFixedDelay(tPoller, 0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
     try {
       if (Utils.waitUntilReady(queue, getConfig().getScaleTimeout(), TimeUnit.MILLISECONDS)) {
         Log.debug("{}/{} pod(s) ready for {}: {} in namespace: {}.",
@@ -138,7 +136,6 @@ public abstract class RollableScalableResourceOperation<T extends HasMetadata, L
       }
     } finally {
       poller.cancel(true);
-      executor.shutdown();
     }
   }
 

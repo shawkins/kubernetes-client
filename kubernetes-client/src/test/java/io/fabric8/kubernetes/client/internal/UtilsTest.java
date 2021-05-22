@@ -70,6 +70,7 @@ import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import io.fabric8.kubernetes.api.model.storage.VolumeAttachment;
 import io.fabric8.kubernetes.api.model.storage.v1beta1.CSIDriver;
 import io.fabric8.kubernetes.api.model.storage.v1beta1.CSINode;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import io.fabric8.kubernetes.client.utils.Utils;
 import java.io.File;
 import java.util.Collections;
@@ -377,7 +378,7 @@ class UtilsTest {
   
   @Test
   void testDaemonThreadFactory() {
-    ThreadFactory tf = Utils.daemonThreadFactory(this);
+    ThreadFactory tf = ThreadUtils.daemonThreadFactory(this);
     Thread t = tf.newThread(()->{});
     assertTrue(t.isDaemon());
     assertTrue(t.getName().startsWith(UtilsTest.class.getSimpleName()));

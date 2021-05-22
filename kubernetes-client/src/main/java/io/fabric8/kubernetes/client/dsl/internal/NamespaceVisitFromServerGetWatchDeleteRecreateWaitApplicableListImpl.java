@@ -35,6 +35,7 @@ import io.fabric8.kubernetes.client.dsl.base.OperationSupport;
 import io.fabric8.kubernetes.client.handlers.KubernetesListHandler;
 import io.fabric8.kubernetes.client.internal.readiness.Readiness;
 import io.fabric8.kubernetes.client.utils.Serialization;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import io.fabric8.kubernetes.client.utils.Utils;
 
 import okhttp3.OkHttpClient;
@@ -54,8 +55,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
@@ -92,33 +92,31 @@ Waitable<List<HasMetadata>, HasMetadata>, Readiable {
       return Collections.emptyList();
     }
 
-    final List<HasMetadata> result = new ArrayList<>();
+    final List<HasMetadata> result = Collections.synchronizedList(new ArrayList<>());
     final List<HasMetadata> itemsWithConditionNotMatched = new ArrayList<>(items);
     final int size = items.size();
-    final ExecutorService executor = Executors.newFixedThreadPool(size);
+    final List<Future<?>> futures = new ArrayList<>();
 
     try {
       final CountDownLatch latch = new CountDownLatch(size);
       for (final HasMetadata meta : items) {
         final ResourceHandler<HasMetadata, HasMetadataVisitiableBuilder> h = handlerOf(meta);
-        if (!executor.isShutdown()) {
-          executor.submit(() -> {
-            try {
-              result.add(h.waitUntilReady(client, config, meta.getMetadata().getNamespace(), meta, amount, timeUnit));
-            } catch (InterruptedException | IllegalArgumentException interruptedException) {
-              // We may get here if waiting is interrupted or resource doesn't support concept of readiness.
-              // We don't want to wait for items that will never become ready
-              // Skip that resource then.
-              LOGGER.info("{} {} does not support readiness. skipping..", meta.getKind(), meta.getMetadata().getName());
-              latch.countDown();
-            } catch (IllegalStateException t) {
-              logAsNotReady(t, meta);
-            } finally {
-              // Resource got ready and was returned properly
-              latch.countDown();
-            }
-          });
-        }
+        futures.add(ThreadUtils.submit(() -> {
+          try {
+            result.add(h.waitUntilReady(client, config, meta.getMetadata().getNamespace(), meta, amount, timeUnit));
+          } catch (InterruptedException | IllegalArgumentException interruptedException) {
+            // We may get here if waiting is interrupted or resource doesn't support concept of readiness.
+            // We don't want to wait for items that will never become ready
+            // Skip that resource then.
+            LOGGER.info("{} {} does not support readiness. skipping..", meta.getKind(), meta.getMetadata().getName());
+            latch.countDown();
+          } catch (IllegalStateException t) {
+            logAsNotReady(t, meta);
+          } finally {
+            // Resource got ready and was returned properly
+            latch.countDown();
+          }
+        }));
       }
       latch.await(amount, timeUnit);
       if (latch.getCount() == 0) {
@@ -127,7 +125,7 @@ Waitable<List<HasMetadata>, HasMetadata>, Readiable {
         throw new KubernetesClientTimeoutException(itemsWithConditionNotMatched, amount, timeUnit);
       }
     } finally {
-      executor.shutdown();
+      futures.forEach(f -> f.cancel(true));
     }
   }
 

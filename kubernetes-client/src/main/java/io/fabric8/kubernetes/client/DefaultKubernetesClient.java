@@ -122,7 +122,7 @@ import io.fabric8.kubernetes.client.extended.run.RunConfigBuilder;
 import io.fabric8.kubernetes.client.extended.run.RunOperations;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import io.fabric8.kubernetes.client.utils.Serialization;
-import io.fabric8.kubernetes.client.utils.Utils;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -577,7 +577,7 @@ public class DefaultKubernetesClient extends BaseClient implements NamespacedKub
    */
   @Override
   public SharedInformerFactory informers() {
-    return new SharedInformerFactory(Executors.newCachedThreadPool(Utils.daemonThreadFactory(this)), httpClient, getConfiguration());
+    return new SharedInformerFactory(Executors.newCachedThreadPool(ThreadUtils.daemonThreadFactory(this)), httpClient, getConfiguration());
   }
 
   /**

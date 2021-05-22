@@ -30,15 +30,13 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.fabric8.kubernetes.client.LocalPortForward;
 import io.fabric8.kubernetes.client.PortForward;
+import io.fabric8.kubernetes.client.utils.SerialScheduledExecutor;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import io.fabric8.kubernetes.client.utils.URLUtils;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,7 +84,7 @@ public class PortForwarderWebsocket implements PortForwarder {
       final AtomicBoolean alive = new AtomicBoolean(true);
       final CopyOnWriteArrayList<PortForward> handles = new CopyOnWriteArrayList<>();
 
-      final ExecutorService executorService = Executors.newSingleThreadExecutor();
+      final SerialScheduledExecutor executorService = ThreadUtils.newSerialScheduledExecutor();
 
       // Create a handle that can be used to retrieve information and stop the port-forward
       final LocalPortForward localPortForwardHandle = new LocalPortForward() {
@@ -97,7 +95,7 @@ public class PortForwarderWebsocket implements PortForwarder {
             server.close();
           } finally {
             closeQuietly(handles.toArray(new Closeable[]{}));
-            closeExecutor(executorService);
+            executorService.terminate();
           }
         }
 
@@ -193,7 +191,7 @@ public class PortForwarderWebsocket implements PortForwarder {
 
       private int messagesRead = 0;
 
-      private final ExecutorService pumperService = Executors.newSingleThreadExecutor();
+      private final SerialScheduledExecutor pumperService = ThreadUtils.newSerialScheduledExecutor();
 
       @Override
       public void onOpen(final WebSocket webSocket, Response response) {
@@ -331,7 +329,7 @@ public class PortForwarderWebsocket implements PortForwarder {
             LOG.error("{}: Error while closing the client output channel", logPrefix, e);
           }
         }
-        closeExecutor(pumperService);
+        pumperService.terminate();
       }
 
     });
@@ -362,22 +360,6 @@ public class PortForwarderWebsocket implements PortForwarder {
         return serverThrowables;
       }
     };
-  }
-
-  private void closeExecutor(ExecutorService executor) {
-    try {
-      executor.shutdown();
-      if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-        executor.shutdownNow();
-        if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
-          LOG.error("The executor service did not terminate");
-        }
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    } catch (Exception e) {
-      LOG.error("Error while closing the executor", e);
-    }
   }
 
   public static void closeQuietly(Closeable... cloaseables) {

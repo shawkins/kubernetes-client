@@ -23,6 +23,8 @@ import io.fabric8.kubernetes.client.dsl.Loggable;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.dsl.base.OperationContext;
 import io.fabric8.kubernetes.client.utils.PodOperationUtil;
+import io.fabric8.kubernetes.client.utils.SerialScheduledExecutor;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import okhttp3.OkHttpClient;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
@@ -42,9 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -148,17 +148,15 @@ public class JobOperationsImpl extends HasMetadataOperation<Job, JobList, Scalab
       }
     };
 
-    ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-    ScheduledFuture poller = executor.scheduleWithFixedDelay(jobPoller, 0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    Future<?> poller = ThreadUtils.scheduleWithFixedDelay(jobPoller, 0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
     try {
       countDownLatch.await(getConfig().getScaleTimeout(), TimeUnit.MILLISECONDS);
-      executor.shutdown();
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      poller.cancel(true);
-      executor.shutdown();
       LOG.error("Only {}/{} pod(s) ready for Job: {} in namespace: {} - giving up",
         atomicJob.get().getStatus().getActive(), atomicJob.get().getSpec().getParallelism(), atomicJob.get().getMetadata().getName(), namespace);
+    } finally {
+      poller.cancel(true);
     }
   }
 

@@ -42,8 +42,6 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -59,7 +57,7 @@ public class Utils {
   public static final String PATH_WINDOWS = "Path";
   public static final String PATH_UNIX = "PATH";
   private static final Random random = new Random();
-
+  
   private Utils() {
   }
 
@@ -451,24 +449,6 @@ public class Utils {
 
   private static String getOperatingSystemFromSystemProperty() {
     return System.getProperty(OS_NAME);
-  }
-  
-  /**
-   * Create a {@link ThreadFactory} with daemon threads and a thread
-   * name based upon the object passed in.
-   */
-  public static ThreadFactory daemonThreadFactory(Object forObject) {
-    return new ThreadFactory() {
-      ThreadFactory threadFactory = Executors.defaultThreadFactory();
-      
-      @Override
-      public Thread newThread(Runnable r) {
-        Thread ret = threadFactory.newThread(r); 
-        ret.setName(forObject.getClass().getSimpleName() + "-" + System.identityHashCode(forObject) + "-" + ret.getName());
-        ret.setDaemon(true);
-        return ret;
-      }
-    };
   }
 
 }

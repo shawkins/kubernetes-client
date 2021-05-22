@@ -27,6 +27,7 @@ import io.fabric8.kubernetes.client.dsl.base.OperationContext;
 import io.fabric8.kubernetes.client.dsl.base.PatchContext;
 import io.fabric8.kubernetes.client.dsl.internal.RollingOperationContext;
 import io.fabric8.kubernetes.client.utils.KubernetesResourceUtil;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import io.fabric8.kubernetes.client.utils.Utils;
 import okhttp3.OkHttpClient;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
@@ -50,9 +51,7 @@ import java.util.function.Consumer;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
@@ -298,8 +297,7 @@ public class DeploymentOperationsImpl extends RollableScalableResourceOperation<
       }
     };
 
-    ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
-    ScheduledFuture poller = executor.scheduleWithFixedDelay(deploymentPoller, 0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    Future<?> poller = ThreadUtils.scheduleWithFixedDelay(deploymentPoller, 0, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
     try {
       if (Utils.waitUntilReady(queue, getConfig().getScaleTimeout(), TimeUnit.MILLISECONDS)) {
         LOG.debug("{}/{} pod(s) ready for Deployment: {} in namespace: {}.",
@@ -310,7 +308,6 @@ public class DeploymentOperationsImpl extends RollableScalableResourceOperation<
       }
     } finally {
       poller.cancel(true);
-      executor.shutdown();
     }
   }
 

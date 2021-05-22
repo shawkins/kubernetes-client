@@ -29,8 +29,6 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -39,6 +37,7 @@ import java.util.zip.GZIPOutputStream;
 
 import io.fabric8.kubernetes.client.dsl.base.OperationSupport;
 import io.fabric8.kubernetes.client.dsl.internal.PodOperationContext;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import io.fabric8.kubernetes.client.utils.URLUtils;
 import io.fabric8.kubernetes.client.utils.Utils;
 import okhttp3.OkHttpClient;
@@ -117,8 +116,7 @@ public class PodUpload {
         }
         return null;
       };
-      final ExecutorService es = Executors.newSingleThreadExecutor();
-      Future<?> readFilesFuture = es.submit(readFiles);
+      Future<?> readFilesFuture = ThreadUtils.submit(readFiles);
       copy(pis, podUploadWebSocketListener::send);
       podUploadWebSocketListener.waitUntilComplete(DEFAULT_COMPLETE_REQUEST_TIMEOUT_SECONDS);
       try {
@@ -132,7 +130,7 @@ public class PodUpload {
       } catch (TimeoutException e) {
         return false;
       } finally {
-        es.shutdown();
+        readFilesFuture.cancel(true);
       }
     }
   }

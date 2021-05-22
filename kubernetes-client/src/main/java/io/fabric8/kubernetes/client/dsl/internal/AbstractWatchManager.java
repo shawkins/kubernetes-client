@@ -16,19 +16,17 @@
 package io.fabric8.kubernetes.client.dsl.internal;
 
 import io.fabric8.kubernetes.api.model.ListOptions;
-import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.Watcher;
 import io.fabric8.kubernetes.client.WatcherException;
-import io.fabric8.kubernetes.client.utils.Utils;
+import io.fabric8.kubernetes.client.utils.SerialScheduledExecutor;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.WebSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -46,7 +44,7 @@ public abstract class AbstractWatchManager<T> implements Watch {
   private final int reconnectInterval;
   private final int maxIntervalExponent;
   final AtomicInteger currentReconnectAttempt;
-  private final ScheduledExecutorService executorService;
+  private final SerialScheduledExecutor executorService;
   
   private final RequestBuilder requestBuilder;
   protected ClientRunner runner;
@@ -62,7 +60,7 @@ public abstract class AbstractWatchManager<T> implements Watch {
     this.resourceVersion = new AtomicReference<>(listOptions.getResourceVersion());
     this.currentReconnectAttempt = new AtomicInteger(0);
     this.forceClosed = new AtomicBoolean();
-    this.executorService = Executors.newSingleThreadScheduledExecutor(Utils.daemonThreadFactory(AbstractWatchManager.this));
+    this.executorService = ThreadUtils.newSerialScheduledExecutor();
     
     this.requestBuilder = requestBuilder;
   }
@@ -91,23 +89,12 @@ public abstract class AbstractWatchManager<T> implements Watch {
   }
 
   final void closeExecutorService() {
-    if (executorService != null && !executorService.isShutdown()) {
-      logger.debug("Closing ExecutorService");
-      try {
-        executorService.shutdown();
-        if (!executorService.awaitTermination(1, TimeUnit.SECONDS)) {
-          logger.warn("Executor didn't terminate in time after shutdown in close(), killing it.");
-          executorService.shutdownNow();
-        }
-      } catch (Exception t) {
-        throw KubernetesClientException.launderThrowable(t);
-      }
-    }
+    executorService.terminate();
   }
 
   void submit(Runnable task) {
     if (!executorService.isShutdown()) {
-      executorService.submit(task);
+      executorService.execute(task);
     }
   }
 

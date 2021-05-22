@@ -20,6 +20,8 @@ import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.LogWatch;
 import io.fabric8.kubernetes.client.utils.BlockingInputStreamPumper;
 import io.fabric8.kubernetes.client.utils.InputStreamPumper;
+import io.fabric8.kubernetes.client.utils.SerialScheduledExecutor;
+import io.fabric8.kubernetes.client.utils.ThreadUtils;
 import io.fabric8.kubernetes.client.utils.Utils;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -36,13 +38,11 @@ import java.io.PipedOutputStream;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static io.fabric8.kubernetes.client.utils.Utils.closeQuietly;
-import static io.fabric8.kubernetes.client.utils.Utils.shutdownExecutorService;
 
 public class LogWatchCallback implements LogWatch, Callback, AutoCloseable {
 
@@ -55,7 +55,7 @@ public class LogWatchCallback implements LogWatch, Callback, AutoCloseable {
 
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final ArrayBlockingQueue<Object> queue = new ArrayBlockingQueue<>(1);
-    private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+    private final SerialScheduledExecutor executorService = ThreadUtils.newSerialScheduledExecutor();
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private InputStreamPumper pumper;
@@ -109,7 +109,7 @@ public class LogWatchCallback implements LogWatch, Callback, AutoCloseable {
         }
 
         closeQuietly(pumper);
-        shutdownExecutorService(executorService);
+        executorService.terminate();
       } finally {
         closeQuietly(toClose);
       }
@@ -156,7 +156,7 @@ public class LogWatchCallback implements LogWatch, Callback, AutoCloseable {
        });
 
       if (!executorService.isShutdown()) {
-        executorService.submit(pumper);
+        executorService.execute(pumper);
         started.set(true);
         queue.add(true);
       }

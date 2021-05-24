@@ -28,11 +28,11 @@ public class ReflectorWatcher<T extends HasMetadata> implements Watcher<T> {
 
   private static final Logger log = LoggerFactory.getLogger(ReflectorWatcher.class);
 
-  private final Store<T> store;
+  private final SyncableStore<T> store;
   private final AtomicReference<String> lastSyncResourceVersion;
   private final Runnable onHttpGone;
 
-  public ReflectorWatcher(Store<T> store, AtomicReference<String> lastSyncResourceVersion, Runnable onHttpGone) {
+  public ReflectorWatcher(SyncableStore<T> store, AtomicReference<String> lastSyncResourceVersion, Runnable onHttpGone) {
     this.store = store;
     this.lastSyncResourceVersion = lastSyncResourceVersion;
     this.onHttpGone = onHttpGone;

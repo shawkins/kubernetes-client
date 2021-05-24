@@ -33,13 +33,14 @@ public class Reflector<T extends HasMetadata, L extends KubernetesResourceList<T
   private final AtomicReference<String> lastSyncResourceVersion;
   private final Class<T> apiTypeClass;
   private final ListerWatcher<T, L> listerWatcher;
-  private final Store<T> store;
+  private final SyncableStore<T> store;
   private final OperationContext operationContext;
   private final ReflectorWatcher<T> watcher;
   private volatile boolean running = true;
+  private volatile boolean watching = true;
   private final AtomicReference<Watch> watch;
 
-  public Reflector(Class<T> apiTypeClass, ListerWatcher<T, L> listerWatcher, Store store, OperationContext operationContext) {
+  public Reflector(Class<T> apiTypeClass, ListerWatcher<T, L> listerWatcher, SyncableStore<T> store, OperationContext operationContext) {
     this.apiTypeClass = apiTypeClass;
     this.listerWatcher = listerWatcher;
     this.store = store;
@@ -75,13 +76,14 @@ public class Reflector<T extends HasMetadata, L extends KubernetesResourceList<T
    * <br>Should be called only at start and when HttpGone is seen.
    */
   public void listSyncAndWatch() {
-    store.isPopulated(false);
+    watching = false;
     final L list = getList();
     final String latestResourceVersion = list.getMetadata().getResourceVersion();
     lastSyncResourceVersion.set(list.getMetadata().getResourceVersion());
     log.debug("Listing items ({}) for resource {} v{}", list.getItems().size(), apiTypeClass, latestResourceVersion);
-    store.replace(list.getItems(), latestResourceVersion);
+    store.replace(list.getItems());
     startWatcher(latestResourceVersion);
+    watching = true;
   }
 
   private synchronized void startWatcher(final String latestResourceVersion) {
@@ -102,5 +104,9 @@ public class Reflector<T extends HasMetadata, L extends KubernetesResourceList<T
   
   public boolean isRunning() {
     return running;
+  }
+  
+  public boolean isWatching() {
+    return watching;
   }
 }

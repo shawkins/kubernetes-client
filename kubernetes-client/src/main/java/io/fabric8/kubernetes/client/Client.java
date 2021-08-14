@@ -16,6 +16,8 @@
 
 package io.fabric8.kubernetes.client;
 
+import io.fabric8.kubernetes.api.model.APIGroupList;
+import io.fabric8.kubernetes.api.model.APIResourceList;
 import io.fabric8.kubernetes.api.model.RootPaths;
 
 import java.io.Closeable;
@@ -48,5 +50,19 @@ public interface Client extends ConfigAware, Closeable {
    */
   boolean supportsApiPath(String path);
 
+  @Override
   void close();
+  
+  /**
+   * Returns the api groups
+   * @return the {@link APIGroupList} metadata
+   */
+  APIGroupList getApiGroups();
+  
+  /**
+   * Return the api resource metadata for the given groupVersion
+   * @param the groupVersion - group/version
+   * @return the {@link APIResourceList} for the groupVersion
+   */
+  APIResourceList getApiResources(String groupVersion);
 }

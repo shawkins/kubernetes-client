@@ -9,6 +9,7 @@
 
 #### Improvements
 * Fix #3448 added methods for getting specific version information - `KubernetesClient.getKubernetesVersion`, `OpenShiftClient.getOpenShiftV3Version`, and `OpenShiftClient.getOpenShiftV3Version`
+* Fix #3390: Make mock server support JSON_MERGE_PATCH
 
 #### Dependency Upgrade
 
@@ -72,7 +73,6 @@
 * Fix #3379: using updateStatus rather than patchStatus in the Raw logic
 
 #### Improvements
-* Fix #3390: Make mock server to work again with updateStatus by handling JSON_MERGE_PATCH
 * Fix #3316: allow locking deletion to resource version
 * Fix #3350: Replace references to impls with interfaces in several places in the the dsl
 * Fix #3327: Removed generated ResourceHandlers

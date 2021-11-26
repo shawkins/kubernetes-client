@@ -107,9 +107,10 @@ public class GenericKubernetesResource implements HasMetadata {
   public <T> T get(String... path) {
     Object current = null;
     int it = 0;
-    final List<String> properties = Stream.of(path).map(p -> p.split("\\.")).flatMap(Stream::of)
+    final List<String> properties = Stream.of(path).map(p -> p.split("(?<!\\\\)\\.")).flatMap(Stream::of)
       .collect(Collectors.toList());
     for (String p : properties) {
+      p = p.replace("\\.", ".");
       if (it++ == 0) {
         current = getAdditionalProperties().get(p);
       } else {

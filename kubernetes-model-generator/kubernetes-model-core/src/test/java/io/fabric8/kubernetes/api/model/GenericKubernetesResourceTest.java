@@ -275,6 +275,18 @@ class GenericKubernetesResourceTest {
       .hasMessageContaining("Collection");
   }
 
+  @Test
+  @DisplayName("get field with dots, with complex-structure-resource, should return value")
+  void getWithDotsInField() throws Exception {
+    // Given
+    final GenericKubernetesResource gkr = objectMapper
+      .readValue(load("complex-structure-resource.json"), GenericKubernetesResource.class);
+    // When
+    final int result = gkr.get("spec.dot\\.in\\.field");
+    // Then
+    assertThat(result).isEqualTo(42);
+  }
+
   private static InputStream load(String resource) {
     return GenericKubernetesResource.class.getResourceAsStream("/generic-kubernetes-resource/" + resource);
   }

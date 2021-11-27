@@ -28,7 +28,9 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +54,7 @@ import java.util.stream.Stream;
 @Buildable(editableEnabled = false, validationEnabled = false, generateBuilderPackage = true, lazyCollectionInitEnabled = false, builderPackage = "io.fabric8.kubernetes.api.builder")
 public class GenericKubernetesResource implements HasMetadata {
 
-  private static final Pattern ARRAY_PROPERTY_PATTERN = Pattern.compile("^(.+)\\[(\\d+)]$");
+  private static final Pattern ARRAY_PROPERTY_PATTERN = Pattern.compile("^([^\\[]+)((?:\\[\\d+\\])+)?$");
 
   @JsonProperty("apiVersion")
   private String apiVersion;
@@ -98,6 +100,8 @@ public class GenericKubernetesResource implements HasMetadata {
    *
    * <p> In addition, fields that contain collections/arrays can also be traversed
    * <pre>{@code resource.get("path.collectionField[1].nested.array[0].field");}</pre>
+   * 
+   * <p> . may be escaped with \\.  Any other appearance of \\ will be treated as itself.
    *
    * @param path of the field to retrieve.
    * @param <T> type of the returned object.
@@ -105,30 +109,43 @@ public class GenericKubernetesResource implements HasMetadata {
    */
   @SuppressWarnings("unchecked")
   public <T> T get(String... path) {
-    Object current = null;
-    int it = 0;
+    Object current = getAdditionalProperties();
     final List<String> properties = Stream.of(path).map(p -> p.split("(?<!\\\\)\\.")).flatMap(Stream::of)
       .collect(Collectors.toList());
-    for (String p : properties) {
+    for (int i = 0; i < properties.size(); i++) {
+      String p = properties.get(i);
       p = p.replace("\\.", ".");
-      if (it++ == 0) {
-        current = getAdditionalProperties().get(p);
+      final Matcher arrayMatcher = ARRAY_PROPERTY_PATTERN.matcher(p);
+      String key = null;
+      String arrayAccessors = null;
+      if (!arrayMatcher.matches()) {
+        // just assume the key - that allows for the usage of \\ and [ in other ways
+        key = p;
       } else {
-        final Matcher arrayMatcher = ARRAY_PROPERTY_PATTERN.matcher(p);
-        if (current instanceof Map && arrayMatcher.find()) {
-          final String key = arrayMatcher.group(1);
-          final int index = Integer.parseInt(arrayMatcher.group(2));
-          final Map<String, Object> field = (Map<String, Object>) current;
-          current = ((Collection<Object>)field.get(key)).toArray()[index];
-        } else if (current instanceof Map) {
-          current = ((Map<String, Object>) current).get(p);
-        } else {
-          throw new IllegalArgumentException("Cannot get property '" + String.join(".", properties) +
-            "' from " + getApiVersion() + " " + getKind() +
-            " (missing segment '" + String.join(".", properties.subList(it - 1, properties.size())) + "')");
+        key = arrayMatcher.group(1);
+        arrayAccessors = arrayMatcher.group(2);
+      }
+      current = castValue(current, Map.class, properties, i).get(key);
+      if (arrayAccessors != null) {
+        final List<String> accessors = Arrays.asList(arrayAccessors.split("\\]"));
+        for (String a : accessors) {
+          final int index = Integer.parseInt(a.substring(1));
+          current = castValue(current, List.class, properties, i).get(index);
         }
       }
     }
     return (T) current;
+  }
+
+  <T> T castValue(Object v, Class<T> type, List<String> properties, int it) {
+    if (v == null) {
+      throw new IllegalArgumentException("Cannot get property '" + String.join(".", properties) +
+        "' from " + getApiVersion() + " " + getKind() +
+        " (missing segment '" + String.join(".", properties.subList(it, properties.size())) + "')");
+    }
+    if (!type.isInstance(v)) {
+      // could be a more specific exception
+    }
+    return type.cast(v);
   }
 }

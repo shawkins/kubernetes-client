@@ -27,6 +27,7 @@ import okhttp3.mockwebserver.MockWebServer;
 import java.util.Map;
 import java.util.Queue;
 
+@Deprecated
 public class CamelKMockServer extends KubernetesMockServer {
 
   public CamelKMockServer() {

@@ -42,8 +42,8 @@ import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -76,12 +76,12 @@ public class PortForwarderWebsocket implements PortForwarder {
   public LocalPortForward forward(final URL resourceBaseUrl, final int port, final InetAddress localHost, final int localPort) {
     try {
       InetSocketAddress inetSocketAddress = createNewInetSocketAddress(localHost, localPort);
-      final ServerSocketChannel server = ServerSocketChannel.open().bind(inetSocketAddress);
+      ServerSocketChannel channel = ServerSocketChannel.open();
+      channel.configureBlocking(false);
+      final ServerSocketChannel server = channel.bind(inetSocketAddress);
 
       final AtomicBoolean alive = new AtomicBoolean(true);
       final CopyOnWriteArrayList<PortForward> handles = new CopyOnWriteArrayList<>();
-
-      final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
       // Create a handle that can be used to retrieve information and stop the port-forward
       final LocalPortForward localPortForwardHandle = new LocalPortForward() {
@@ -92,7 +92,6 @@ public class PortForwarderWebsocket implements PortForwarder {
             server.close();
           } finally {
             Utils.closeQuietly(handles);
-            executorService.shutdownNow();
           }
         }
 
@@ -147,24 +146,24 @@ public class PortForwarderWebsocket implements PortForwarder {
           return serverThrowables;
         }
       };
-
-      // Start listening on localhost for new connections.
+      
+      // poll on localhost for new connections.
       // Every new connection will open its own stream on the remote resource.
-      executorService.execute(() -> {
-        // accept cycle
-        while (alive.get()) {
-          try {
-            SocketChannel socket = server.accept();
-            handles.add(forward(resourceBaseUrl, port, socket, socket));
-          } catch (IOException e) {
-            if (alive.get()) {
-              LOG.error("Error while listening for connections", e);
-            }
-            Utils.closeQuietly(localPortForwardHandle);
+      Utils.scheduleAtFixedRate(executor, () -> {
+        try {
+          SocketChannel socket = server.accept();
+          if (socket == null) {
+            return;
           }
+          handles.add(forward(resourceBaseUrl, port, socket, socket, false));
+        } catch (IOException e) {
+          if (alive.get()) {
+            LOG.error("Error while listening for connections", e);
+          }
+          Utils.closeQuietly(localPortForwardHandle);
         }
-      });
-
+      }, 0, 50, TimeUnit.MILLISECONDS);
+      
       return localPortForwardHandle;
     } catch (IOException e) {
       throw new IllegalStateException("Unable to port forward", e);
@@ -173,16 +172,25 @@ public class PortForwarderWebsocket implements PortForwarder {
 
   @Override
   public PortForward forward(URL resourceBaseUrl, int port, final ReadableByteChannel in, final WritableByteChannel out) {
+    return forward(resourceBaseUrl, port, in, out, true);
+  }
+  
+  public PortForward forward(URL resourceBaseUrl, int port, final ReadableByteChannel in, final WritableByteChannel out, boolean blocking) {
     final AtomicBoolean alive = new AtomicBoolean(true);
     final AtomicBoolean errorOccurred = new AtomicBoolean(false);
     final Collection<Throwable> clientThrowables = Collections.synchronizedCollection(new ArrayList<>());
     final Collection<Throwable> serverThrowables = Collections.synchronizedCollection(new ArrayList<>());
     final String logPrefix = "FWD";
 
+    Executor pumper = executor;
+    
+    if (blocking) {
+      pumper = Executors.newSingleThreadExecutor();
+    }
+
     WebSocket.Listener listener = new WebSocket.Listener() {
       private int messagesRead = 0;
 
-      private final ExecutorService pumperService = Executors.newSingleThreadExecutor();
       private final SerialExecutor serialExecutor = new SerialExecutor(executor);
 
       @Override
@@ -190,24 +198,21 @@ public class PortForwarderWebsocket implements PortForwarder {
         LOG.debug("{}: onOpen", logPrefix);
 
         if (in != null) {
-          pumperService.execute(() -> {
+          pumper.execute(() -> {
             ByteBuffer buffer = ByteBuffer.allocate(4096);
             int read;
             try {
-              do {
-                buffer.clear();
-                buffer.put((byte) 0); // channel byte
-                read = in.read(buffer);
-                if (read > 0) {
-                  buffer.flip();
-                  webSocket.send(buffer);
-                } else if (read == 0) {
-                  // in is non-blocking, prevent a busy loop
-                  Thread.sleep(50);
-                }
-              } while (alive.get() && read >= 0);
-
-            } catch (IOException | InterruptedException e) {
+              buffer.clear();
+              buffer.put((byte) 0); // channel byte
+              read = in.read(buffer);
+              if (read > 0) {
+                buffer.flip();
+                webSocket.send(buffer);
+              }
+              if (alive.get() && read >= 0) {
+                Utils.schedule(pumper, this, 10, TimeUnit.MILLISECONDS);
+              }
+            } catch (IOException e) {
               if (alive.get()) {
                 clientThrowables.add(e);
                 LOG.error("Error while writing client data");
@@ -257,8 +262,7 @@ public class PortForwarderWebsocket implements PortForwarder {
                 while (buffer.hasRemaining()) {
                   int written = out.write(buffer); // channel byte already skipped
                   if (written == 0) {
-                    // out is non-blocking, prevent a busy loop
-                    Thread.sleep(50);
+                    schedule again
                   }
                 }
                 webSocket.request();

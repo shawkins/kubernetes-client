@@ -180,7 +180,7 @@ func (g *schemaGenerator) javaType(t reflect.Type) string {
 		case "RawExtension":
 			return BasePackage + ".HasMetadata"
 		case "List":
-			return pkgDesc.JavaPackage + ".BaseKubernetesList"
+			return pkgDesc.JavaPackage + ".KubernetesList"
 		default:
 			return pkgDesc.JavaPackage + "." + t.Name()
 		}

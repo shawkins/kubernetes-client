@@ -34,22 +34,22 @@ import lombok.experimental.Accessors;
     ""
 })
 @Buildable(editableEnabled = false, validationEnabled = false, generateBuilderPackage = true, lazyCollectionInitEnabled = false, builderPackage = "io.fabric8.kubernetes.api.builder")
-public class BaseKubernetesList implements KubernetesResource, KubernetesResourceList<io.fabric8.kubernetes.api.model.HasMetadata>
+public class BaseKubernetesList<T extends HasMetadata> implements KubernetesResource, KubernetesResourceList<T>
 {
 
     /**
-     * 
+     *
      * (Required)
-     * 
+     *
      */
     @JsonProperty("apiVersion")
     private String apiVersion = "v1";
     @JsonProperty("items")
-    private List<io.fabric8.kubernetes.api.model.HasMetadata> items = new ArrayList<io.fabric8.kubernetes.api.model.HasMetadata>();
+    private List<T> items = new ArrayList<>();
     /**
-     * 
+     *
      * (Required)
-     * 
+     *
      */
     @JsonProperty("kind")
     private String kind = "List";
@@ -60,19 +60,19 @@ public class BaseKubernetesList implements KubernetesResource, KubernetesResourc
 
     /**
      * No args constructor for use in serialization
-     * 
+     *
      */
     public BaseKubernetesList() {
     }
 
     /**
-     * 
+     *
      * @param metadata
      * @param apiVersion
      * @param kind
      * @param items
      */
-    public BaseKubernetesList(String apiVersion, List<io.fabric8.kubernetes.api.model.HasMetadata> items, String kind, ListMeta metadata) {
+    public BaseKubernetesList(String apiVersion, List<T> items, String kind, ListMeta metadata) {
         super();
         this.apiVersion = apiVersion;
         this.items = items;
@@ -81,9 +81,9 @@ public class BaseKubernetesList implements KubernetesResource, KubernetesResourc
     }
 
     /**
-     * 
+     *
      * (Required)
-     * 
+     *
      */
     @JsonProperty("apiVersion")
     public String getApiVersion() {
@@ -91,29 +91,30 @@ public class BaseKubernetesList implements KubernetesResource, KubernetesResourc
     }
 
     /**
-     * 
+     *
      * (Required)
-     * 
+     *
      */
     @JsonProperty("apiVersion")
     public void setApiVersion(String apiVersion) {
         this.apiVersion = apiVersion;
     }
 
+    @Override
     @JsonProperty("items")
-    public List<io.fabric8.kubernetes.api.model.HasMetadata> getItems() {
+    public List<T> getItems() {
         return items;
     }
 
     @JsonProperty("items")
-    public void setItems(List<io.fabric8.kubernetes.api.model.HasMetadata> items) {
+    public void setItems(List<T> items) {
         this.items = items;
     }
 
     /**
-     * 
+     *
      * (Required)
-     * 
+     *
      */
     @JsonProperty("kind")
     public String getKind() {
@@ -121,15 +122,16 @@ public class BaseKubernetesList implements KubernetesResource, KubernetesResourc
     }
 
     /**
-     * 
+     *
      * (Required)
-     * 
+     *
      */
     @JsonProperty("kind")
     public void setKind(String kind) {
         this.kind = kind;
     }
 
+    @Override
     @JsonProperty("metadata")
     public ListMeta getMetadata() {
         return metadata;

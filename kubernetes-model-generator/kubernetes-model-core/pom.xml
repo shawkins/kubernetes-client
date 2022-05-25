@@ -181,6 +181,12 @@
                     <delete
                       file="${generate.targetDirectory}/io/fabric8/kubernetes/api/model/WatchEvent.java"
                       verbose="true" />
+                    <delete
+                      file="${generate.targetDirectory}/io/fabric8/kubernetes/api/model/BaseKubernetesList.java"
+                      verbose="true" />
+                    <delete
+                      file="${generate.targetDirectory}/io/fabric8/kubernetes/api/model/KubernetesList.java"
+                      verbose="true" />
                     <delete verbose="true">
                       <fileset dir="${generate.targetDirectory}">
                         <include name="*.java" />

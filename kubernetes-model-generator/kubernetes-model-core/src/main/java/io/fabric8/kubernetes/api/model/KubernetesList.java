@@ -42,7 +42,7 @@ import java.util.List;
 })
 @JsonDeserialize(using = JsonDeserializer.None.class)
 @Buildable(editableEnabled = false, validationEnabled = false, generateBuilderPackage=true, builderPackage = "io.fabric8.kubernetes.api.builder")
-public class KubernetesList extends BaseKubernetesList implements KubernetesResource {
+public class KubernetesList extends BaseKubernetesList<HasMetadata> implements KubernetesResource {
 
     /**
      * No args constructor for use in serialization

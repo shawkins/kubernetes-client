@@ -1081,8 +1081,7 @@
       "type": "object",
       "properties": {
         "object": {
-          "$ref": "#/definitions/kubernetes_apimachinery_pkg_runtime_RawExtension",
-          "existingJavaType": "io.fabric8.kubernetes.api.model.HasMetadata"
+          "existingJavaType": "io.fabric8.kubernetes.api.model.KubernetesResource"
         },
         "type": {
           "type": "string"
@@ -1090,14 +1089,6 @@
       },
       "additionalProperties": true,
       "javaType": "io.fabric8.kubernetes.api.model.WatchEvent",
-      "javaInterfaces": [
-        "io.fabric8.kubernetes.api.model.KubernetesResource"
-      ]
-    },
-    "kubernetes_apimachinery_pkg_runtime_ImageRawExtension": {
-      "type": "object",
-      "additionalProperties": true,
-      "javaType": "io.fabric8.kubernetes.api.model.runtime.RawExtension",
       "javaInterfaces": [
         "io.fabric8.kubernetes.api.model.KubernetesResource"
       ]
@@ -1484,8 +1475,7 @@
       "type": "object",
       "properties": {
         "extension": {
-          "$ref": "#/definitions/kubernetes_apimachinery_pkg_runtime_RawExtension",
-          "existingJavaType": "io.fabric8.kubernetes.api.model.HasMetadata"
+          "existingJavaType": "io.fabric8.kubernetes.api.model.KubernetesResource"
         },
         "name": {
           "type": "string"
@@ -10064,9 +10054,6 @@
       },
       "additionalProperties": true
     },
-    "imagerawextension": {
-      "additionalProperties": true
-    },
     "info": {
       "properties": {
         "buildDate": {
@@ -10605,8 +10592,7 @@
     "namedextension": {
       "properties": {
         "extension": {
-          "$ref": "#/definitions/kubernetes_apimachinery_pkg_runtime_RawExtension",
-          "existingJavaType": "io.fabric8.kubernetes.api.model.HasMetadata"
+          "existingJavaType": "io.fabric8.kubernetes.api.model.KubernetesResource"
         },
         "name": {
           "type": "string"
@@ -14074,8 +14060,7 @@
     "watchevent": {
       "properties": {
         "object": {
-          "$ref": "#/definitions/kubernetes_apimachinery_pkg_runtime_RawExtension",
-          "existingJavaType": "io.fabric8.kubernetes.api.model.HasMetadata"
+          "existingJavaType": "io.fabric8.kubernetes.api.model.KubernetesResource"
         },
         "type": {
           "type": "string"

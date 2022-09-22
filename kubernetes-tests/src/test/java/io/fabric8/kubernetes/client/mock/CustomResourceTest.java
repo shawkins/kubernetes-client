@@ -371,7 +371,7 @@ class CustomResourceTest {
         .andUpgradeToWebSocket()
         .open()
         .waitFor(WATCH_EVENT_PERIOD)
-        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"metadata\": {\"resourceVersion\": 1003}}}")
+        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"apiVersion\": \"v1\", \"metadata\": {\"resourceVersion\": 1003}}}")
         .done().always();
 
     CountDownLatch anyEventReceived = new CountDownLatch(1);
@@ -401,7 +401,7 @@ class CustomResourceTest {
         .andUpgradeToWebSocket()
         .open()
         .waitFor(WATCH_EVENT_PERIOD)
-        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"metadata\": {\"resourceVersion\": 1}}}")
+        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"apiVersion\": \"v1\", \"metadata\": {\"resourceVersion\": 1}}}")
         .done().always();
 
     CountDownLatch anyEventReceived = new CountDownLatch(1);
@@ -433,7 +433,7 @@ class CustomResourceTest {
         .andUpgradeToWebSocket()
         .open()
         .waitFor(WATCH_EVENT_PERIOD)
-        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"metadata\": {\"resourceVersion\": 1}}}")
+        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"apiVersion\": \"v1\", \"metadata\": {\"resourceVersion\": 1}}}")
         .done().always();
 
     CountDownLatch anyEventReceieved = new CountDownLatch(1);
@@ -466,7 +466,7 @@ class CustomResourceTest {
         .andUpgradeToWebSocket()
         .open()
         .waitFor(WATCH_EVENT_PERIOD)
-        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"metadata\": {\"resourceVersion\": 1}}}")
+        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"apiVersion\": \"v1\", \"metadata\": {\"resourceVersion\": 1}}}")
         .done().always();
 
     CountDownLatch anyEventReceived = new CountDownLatch(1);
@@ -499,7 +499,7 @@ class CustomResourceTest {
         .andUpgradeToWebSocket()
         .open()
         .waitFor(WATCH_EVENT_PERIOD)
-        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"metadata\": {\"resourceVersion\": 1001}}}")
+        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"apiVersion\": \"v1\", \"metadata\": {\"resourceVersion\": 1001}}}")
         .done().always();
 
     CountDownLatch anyEventReceived = new CountDownLatch(1);
@@ -532,7 +532,7 @@ class CustomResourceTest {
         .andUpgradeToWebSocket()
         .open()
         .waitFor(WATCH_EVENT_PERIOD)
-        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"metadata\": {\"resourceVersion\": 1003}}}")
+        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"apiVersion\": \"v1\", \"metadata\": {\"resourceVersion\": 1003}}}")
         .done().always();
 
     CountDownLatch anyEventReceived = new CountDownLatch(1);
@@ -568,7 +568,7 @@ class CustomResourceTest {
         .andUpgradeToWebSocket()
         .open()
         .waitFor(WATCH_EVENT_PERIOD)
-        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"metadata\": {\"resourceVersion\": 1003}}}")
+        .andEmit("{\"type\":\"ADDED\", \"object\":{\"kind\": \"Hello\", \"apiVersion\": \"v1\", \"metadata\": {\"resourceVersion\": 1003}}}")
         .done().always();
 
     CountDownLatch anyEventReceived = new CountDownLatch(1);

@@ -27,7 +27,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
-import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -55,7 +54,7 @@ class JettyHttpClientTest {
   @DisplayName("close, should close all underlying clients")
   void closeShouldCloseClients() {
     try (var jettyHttpClient = new JettyHttpClient(
-        null, httpClient, webSocketClient, Collections.emptyList(), null, null)) {
+        null, httpClient, webSocketClient)) {
       // When
       jettyHttpClient.close();
       // Then
@@ -75,7 +74,7 @@ class JettyHttpClientTest {
         .tlsVersions(TlsVersion.SSL_3_0)
         .followAllRedirects();
     try (var firstClient = new JettyHttpClient(
-        originalBuilder, httpClient, webSocketClient, Collections.emptyList(), null, null)) {
+        originalBuilder, httpClient, webSocketClient)) {
       // When
       final var result = firstClient.newBuilder()
           .readTimeout(313373, TimeUnit.SECONDS);
@@ -105,7 +104,7 @@ class JettyHttpClientTest {
   @DisplayName("sendAsync with unsupported HttpRequest throws Exception")
   void sendAsyncUnsupportedHttpRequest() {
     try (var jettyHttpClient = new JettyHttpClient(
-        new JettyHttpClientBuilder(null), httpClient, webSocketClient, Collections.emptyList(), null, null)) {
+        new JettyHttpClientBuilder(null), httpClient, webSocketClient)) {
       // When
       final var request = new TestHttpRequest();
       final var result = assertThrows(IllegalArgumentException.class,
@@ -119,7 +118,7 @@ class JettyHttpClientTest {
   @DisplayName("newWebSocketBuilder instantiates a JettyWebSocketBuilder")
   void newWebSocketBuilderInstantiatesJettyWebSocketBuilder() {
     try (var jettyHttpClient = new JettyHttpClient(
-        new JettyHttpClientBuilder(null), httpClient, webSocketClient, Collections.emptyList(), null, null)) {
+        new JettyHttpClientBuilder(null), httpClient, webSocketClient)) {
       // When
       final var result = jettyHttpClient.newWebSocketBuilder();
       // Then
@@ -127,18 +126,4 @@ class JettyHttpClientTest {
     }
   }
 
-  @Test
-  @DisplayName("getFactory returns original factory")
-  void getFactoryReturnsOriginal() {
-    // Given
-    final var factory = new JettyHttpClientFactory();
-    try (var jettyHttpClient = new JettyHttpClient(
-        null, httpClient, webSocketClient, Collections.emptyList(), factory, null)) {
-      // When
-      final var f1 = jettyHttpClient.getFactory();
-      final var f2 = jettyHttpClient.getFactory();
-      // Then
-      assertThat(f1).isSameAs(f2).isSameAs(factory);
-    }
-  }
 }

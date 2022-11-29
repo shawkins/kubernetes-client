@@ -15,7 +15,6 @@
  */
 package io.fabric8.kubernetes.client.jetty;
 
-import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.http.AsyncBody;
 import io.fabric8.kubernetes.client.http.HttpRequest;
@@ -30,7 +29,6 @@ import org.eclipse.jetty.client.util.StringRequestContent;
 import org.eclipse.jetty.websocket.client.WebSocketClient;
 
 import java.nio.ByteBuffer;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -45,19 +43,12 @@ public class JettyHttpClient implements io.fabric8.kubernetes.client.http.HttpCl
 
   private final HttpClient jetty;
   private final WebSocketClient jettyWs;
-  private final Collection<Interceptor> interceptors;
   private final JettyHttpClientBuilder builder;
-  private final JettyHttpClientFactory factory;
-  private final Config config;
 
-  public JettyHttpClient(JettyHttpClientBuilder builder, HttpClient httpClient, WebSocketClient webSocketClient,
-      Collection<Interceptor> interceptors, JettyHttpClientFactory jettyHttpClientFactory, Config config) {
+  public JettyHttpClient(JettyHttpClientBuilder builder, HttpClient httpClient, WebSocketClient webSocketClient) {
     this.builder = builder;
     this.jetty = httpClient;
     this.jettyWs = webSocketClient;
-    this.interceptors = interceptors;
-    this.factory = jettyHttpClientFactory;
-    this.config = config;
   }
 
   @Override
@@ -100,10 +91,6 @@ public class JettyHttpClient implements io.fabric8.kubernetes.client.http.HttpCl
     return new StandardHttpRequest.Builder();
   }
 
-  public Factory getFactory() {
-    return factory;
-  }
-
   private Request newRequest(StandardHttpRequest originalRequest) {
     try {
       jetty.start();
@@ -111,7 +98,7 @@ public class JettyHttpClient implements io.fabric8.kubernetes.client.http.HttpCl
       throw KubernetesClientException.launderThrowable(e);
     }
     final var requestBuilder = originalRequest.toBuilder();
-    interceptors.forEach(i -> Interceptor.useConfig(i, config).before(requestBuilder, originalRequest));
+    builder.getInterceptors().values().forEach(i -> Interceptor.useConfig(i, builder.getRequestConfig()).before(requestBuilder, originalRequest));
     final var request = requestBuilder.build();
 
     var jettyRequest = jetty.newRequest(request.uri()).method(request.method());
@@ -130,10 +117,10 @@ public class JettyHttpClient implements io.fabric8.kubernetes.client.http.HttpCl
   private <T> CompletableFuture<HttpResponse<T>> interceptResponse(
       StandardHttpRequest.Builder builder, CompletableFuture<HttpResponse<T>> originalResponse,
       Function<HttpRequest, CompletableFuture<HttpResponse<T>>> function) {
-    for (var interceptor : interceptors) {
+    for (var interceptor : this.builder.getInterceptors().values()) {
       originalResponse = originalResponse.thenCompose(r -> {
         if (!r.isSuccessful()) {
-          return Interceptor.useConfig(interceptor, config).afterFailure(builder, r)
+          return Interceptor.useConfig(interceptor, this.builder.getRequestConfig()).afterFailure(builder, r)
               .thenCompose(b -> {
                 if (Boolean.TRUE.equals(b)) {
                   return function.apply(builder.build());

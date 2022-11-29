@@ -47,39 +47,41 @@ public class JettyHttpClientBuilder
 
   @Override
   public JettyHttpClient build() {
+    HttpClient sharedHttpClient = null;
+    WebSocketClient sharedWebSocketClient = null;
     if (client != null) {
-      return new JettyHttpClient(this, client.getJetty(), client.getJettyWs(), interceptors.values(), clientFactory,
-          this.requestConfig);
+      sharedHttpClient = client.getJetty();
+      sharedWebSocketClient = client.getJettyWs();
+    } else {
+      final var sslContextFactory = new SslContextFactory.Client();
+      if (sslContext != null) {
+        sslContextFactory.setSslContext(sslContext);
+      }
+      if (tlsVersions != null && tlsVersions.length > 0) {
+        sslContextFactory.setIncludeProtocols(Stream.of(tlsVersions).map(TlsVersion::javaName).toArray(String[]::new));
+      }
+      sharedHttpClient = new HttpClient(newTransport(sslContextFactory, preferHttp11));
+      sharedWebSocketClient = new WebSocketClient(new HttpClient(newTransport(sslContextFactory, preferHttp11)));
+      sharedWebSocketClient.setIdleTimeout(Duration.ZERO);
+      if (connectTimeout != null) {
+        sharedHttpClient.setConnectTimeout(connectTimeout.toMillis());
+        sharedWebSocketClient.setConnectTimeout(connectTimeout.toMillis());
+      }
+      sharedHttpClient.setFollowRedirects(followRedirects);
+      if (proxyAddress != null) {
+        sharedHttpClient.getProxyConfiguration().getProxies()
+            .add(new HttpProxy(new Origin.Address(proxyAddress.getHostString(), proxyAddress.getPort()), false));
+      }
+      if (proxyAddress != null && proxyAuthorization != null) {
+        sharedHttpClient.getRequestListeners().add(new Request.Listener.Adapter() {
+          @Override
+          public void onBegin(Request request) {
+            request.headers(h -> h.put("Proxy-Authorization", proxyAuthorization));
+          }
+        });
+      }
     }
-    final var sslContextFactory = new SslContextFactory.Client();
-    if (sslContext != null) {
-      sslContextFactory.setSslContext(sslContext);
-    }
-    if (tlsVersions != null && tlsVersions.length > 0) {
-      sslContextFactory.setIncludeProtocols(Stream.of(tlsVersions).map(TlsVersion::javaName).toArray(String[]::new));
-    }
-    HttpClient sharedHttpClient = new HttpClient(newTransport(sslContextFactory, preferHttp11));
-    WebSocketClient sharedWebSocketClient = new WebSocketClient(new HttpClient(newTransport(sslContextFactory, preferHttp11)));
-    sharedWebSocketClient.setIdleTimeout(Duration.ZERO);
-    if (connectTimeout != null) {
-      sharedHttpClient.setConnectTimeout(connectTimeout.toMillis());
-      sharedWebSocketClient.setConnectTimeout(connectTimeout.toMillis());
-    }
-    sharedHttpClient.setFollowRedirects(followRedirects);
-    if (proxyAddress != null) {
-      sharedHttpClient.getProxyConfiguration().getProxies()
-          .add(new HttpProxy(new Origin.Address(proxyAddress.getHostString(), proxyAddress.getPort()), false));
-    }
-    if (proxyAddress != null && proxyAuthorization != null) {
-      sharedHttpClient.getRequestListeners().add(new Request.Listener.Adapter() {
-        @Override
-        public void onBegin(Request request) {
-          request.headers(h -> h.put("Proxy-Authorization", proxyAuthorization));
-        }
-      });
-    }
-    return new JettyHttpClient(this, sharedHttpClient, sharedWebSocketClient, interceptors.values(), clientFactory,
-        requestConfig);
+    return new JettyHttpClient(this, sharedHttpClient, sharedWebSocketClient);
   }
 
   private static HttpClientTransport newTransport(SslContextFactory.Client sslContextFactory, boolean preferHttp11) {

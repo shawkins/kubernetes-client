@@ -28,6 +28,7 @@ import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.NamespacedKubernetesClient;
 import io.fabric8.kubernetes.client.RequestConfig;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.NamespacedInOutCreateable;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.http.HttpClient;
 
@@ -127,6 +128,12 @@ public abstract class ClientAdapter<C extends ClientAdapter<C>> implements Clien
   public <T extends HasMetadata, L extends KubernetesResourceList<T>, R extends Resource<T>> MixedOperation<T, L, R> resources(
       Class<T> resourceType, Class<L> listClass, Class<R> resourceClass) {
     return client.resources(resourceType, listClass, resourceClass);
+  }
+
+  @Override
+  public <I extends KubernetesResource, O extends KubernetesResource> NamespacedInOutCreateable<I, O> createOnlyResources(
+      Class<I> inType, Class<O> outType) {
+    return client.createOnlyResources(inType, outType);
   }
 
   public C inAnyNamespace() {

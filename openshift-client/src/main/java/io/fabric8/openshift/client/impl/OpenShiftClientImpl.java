@@ -98,6 +98,8 @@ import io.fabric8.openshift.api.model.OAuthClientList;
 import io.fabric8.openshift.api.model.PodSecurityPolicyReview;
 import io.fabric8.openshift.api.model.PodSecurityPolicySelfSubjectReview;
 import io.fabric8.openshift.api.model.PodSecurityPolicySubjectReview;
+import io.fabric8.openshift.api.model.Project;
+import io.fabric8.openshift.api.model.ProjectList;
 import io.fabric8.openshift.api.model.ProjectRequest;
 import io.fabric8.openshift.api.model.RangeAllocation;
 import io.fabric8.openshift.api.model.RangeAllocationList;
@@ -164,7 +166,6 @@ import io.fabric8.openshift.client.dsl.ProjectOperation;
 import io.fabric8.openshift.client.dsl.ProjectRequestOperation;
 import io.fabric8.openshift.client.dsl.TemplateResource;
 import io.fabric8.openshift.client.dsl.internal.apps.DeploymentConfigOperationsImpl;
-import io.fabric8.openshift.client.dsl.internal.authorization.RoleBindingOperationsImpl;
 import io.fabric8.openshift.client.dsl.internal.build.BuildConfigOperationsImpl;
 import io.fabric8.openshift.client.dsl.internal.build.BuildOperationsImpl;
 import io.fabric8.openshift.client.dsl.internal.core.TemplateOperationsImpl;
@@ -415,7 +416,7 @@ public class OpenShiftClientImpl extends KubernetesClientImpl
 
   @Override
   public NamespacedInOutCreateable<PodSecurityPolicyReview, PodSecurityPolicyReview> podSecurityPolicyReviews() {
-    return OpenShiftHandlers.getCreateOnlyResourceOperation(PodSecurityPolicyReview.class, PodSecurityPolicyReview.class, this);
+    return createOnlyResources(PodSecurityPolicyReview.class, PodSecurityPolicyReview.class);
   }
 
   @Override
@@ -435,19 +436,17 @@ public class OpenShiftClientImpl extends KubernetesClientImpl
 
   @Override
   public NamespacedInOutCreateable<PodSecurityPolicySelfSubjectReview, PodSecurityPolicySelfSubjectReview> podSecurityPolicySelfSubjectReviews() {
-    return OpenShiftHandlers.getCreateOnlyResourceOperation(PodSecurityPolicySelfSubjectReview.class,
-        PodSecurityPolicySelfSubjectReview.class, this);
+    return createOnlyResources(PodSecurityPolicySelfSubjectReview.class, PodSecurityPolicySelfSubjectReview.class);
   }
 
   @Override
   public NamespacedInOutCreateable<PodSecurityPolicySubjectReview, PodSecurityPolicySubjectReview> podSecurityPolicySubjectReviews() {
-    return OpenShiftHandlers.getCreateOnlyResourceOperation(PodSecurityPolicySubjectReview.class,
-        PodSecurityPolicySubjectReview.class, this);
+    return createOnlyResources(PodSecurityPolicySubjectReview.class, PodSecurityPolicySubjectReview.class);
   }
 
   @Override
   public ProjectOperation projects() {
-    return new ProjectOperationsImpl(this);
+    return new ProjectOperationsImpl(this, this.resources(Project.class, ProjectList.class));
   }
 
   @Override
@@ -480,7 +479,7 @@ public class OpenShiftClientImpl extends KubernetesClientImpl
 
   @Override
   public MixedOperation<RoleBinding, RoleBindingList, Resource<RoleBinding>> roleBindings() {
-    return new RoleBindingOperationsImpl(this);
+    return resources(RoleBinding.class, RoleBindingList.class);
   }
 
   @Override
@@ -637,35 +636,32 @@ public class OpenShiftClientImpl extends KubernetesClientImpl
 
   @Override
   public InOutCreateable<SubjectAccessReview, SubjectAccessReviewResponse> subjectAccessReviews() {
-    return OpenShiftHandlers.getCreateOnlyResourceOperation(SubjectAccessReview.class, SubjectAccessReviewResponse.class, this);
+    return createOnlyResources(SubjectAccessReview.class, SubjectAccessReviewResponse.class);
   }
 
   @Override
   public InOutCreateable<ResourceAccessReview, ResourceAccessReviewResponse> resourceAccessReviews() {
-    return OpenShiftHandlers.getCreateOnlyResourceOperation(ResourceAccessReview.class, ResourceAccessReviewResponse.class,
-        this);
+    return createOnlyResources(ResourceAccessReview.class, ResourceAccessReviewResponse.class);
   }
 
   @Override
   public NamespacedInOutCreateable<LocalSubjectAccessReview, SubjectAccessReviewResponse> localSubjectAccessReviews() {
-    return OpenShiftHandlers.getCreateOnlyResourceOperation(LocalSubjectAccessReview.class, SubjectAccessReviewResponse.class,
-        this);
+    return createOnlyResources(LocalSubjectAccessReview.class, SubjectAccessReviewResponse.class);
   }
 
   @Override
   public NamespacedInOutCreateable<LocalResourceAccessReview, ResourceAccessReviewResponse> localResourceAccessReviews() {
-    return OpenShiftHandlers.getCreateOnlyResourceOperation(LocalResourceAccessReview.class, ResourceAccessReviewResponse.class,
-        this);
+    return createOnlyResources(LocalResourceAccessReview.class, ResourceAccessReviewResponse.class);
   }
 
   @Override
   public NamespacedInOutCreateable<SelfSubjectRulesReview, SelfSubjectRulesReview> selfSubjectRulesReviews() {
-    return OpenShiftHandlers.getCreateOnlyResourceOperation(SelfSubjectRulesReview.class, SelfSubjectRulesReview.class, this);
+    return createOnlyResources(SelfSubjectRulesReview.class, SelfSubjectRulesReview.class);
   }
 
   @Override
   public NamespacedInOutCreateable<SubjectRulesReview, SubjectRulesReview> subjectRulesReviews() {
-    return OpenShiftHandlers.getCreateOnlyResourceOperation(SubjectRulesReview.class, SubjectRulesReview.class, this);
+    return createOnlyResources(SubjectRulesReview.class, SubjectRulesReview.class);
   }
 
   @Override

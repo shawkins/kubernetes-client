@@ -30,8 +30,10 @@ import io.fabric8.kubernetes.client.KubernetesClientBuilder.ExecutorSupplier;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.VersionInfo;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.NamespacedInOutCreateable;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
+import io.fabric8.kubernetes.client.dsl.internal.CreateOnlyResourceOperationsImpl;
 import io.fabric8.kubernetes.client.dsl.internal.HasMetadataOperationsImpl;
 import io.fabric8.kubernetes.client.dsl.internal.OperationContext;
 import io.fabric8.kubernetes.client.dsl.internal.OperationSupport;
@@ -285,6 +287,13 @@ public abstract class BaseClient implements Client {
       }
       throw KubernetesClientException.launderThrowable(e);
     }
+  }
+
+  @Override
+  public <I extends KubernetesResource, O extends KubernetesResource> NamespacedInOutCreateable<I, O> createOnlyResources(
+      Class<I> inType, Class<O> outType) {
+    return new CreateOnlyResourceOperationsImpl<>(this, ResourceDefinitionContext.fromResourceType(inType), inType,
+        outType);
   }
 
   public <T extends HasMetadata, L extends KubernetesResourceList<T>> HasMetadataOperationsImpl<T, L> newHasMetadataOperation(

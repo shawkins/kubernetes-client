@@ -24,6 +24,7 @@ import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.Client;
 import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.dsl.InOutCreateable;
 import io.fabric8.kubernetes.client.dsl.NamespacedInOutCreateable;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
@@ -57,7 +58,7 @@ public final class Handlers {
   /**
    * Returns a {@link ResourceHandler} for the given item. The client is optional, if it is supplied, then the server can be
    * consulted for resource metadata if a generic item is passed in.
-   * 
+   *
    * @return the handler
    * @throws KubernetesClientException if a handler cannot be found
    */
@@ -152,7 +153,17 @@ public final class Handlers {
   public <T extends HasMetadata> NamespacedInOutCreateable<T, T> getNamespacedHasMetadataCreateOnlyOperation(Class<T> type,
       Client client) {
     HasMetadataOperation<T, ?, Resource<T>> operation = getNonListingOperation(type, client);
-    return operation::inNamespace;
+    return new NamespacedInOutCreateable<T, T>() {
+      @Override
+      public T create(T item) {
+        return operation.create(item);
+      }
+
+      @Override
+      public InOutCreateable<T, T> inNamespace(String name) {
+        return operation.inNamespace(name);
+      }
+    };
   }
 
 }

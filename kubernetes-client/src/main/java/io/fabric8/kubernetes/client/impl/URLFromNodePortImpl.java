@@ -20,7 +20,6 @@ import io.fabric8.kubernetes.api.model.*;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.ServiceToURLProvider;
-import io.fabric8.kubernetes.client.utils.internal.URLFromServiceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +30,7 @@ public class URLFromNodePortImpl implements ServiceToURLProvider {
   public static final Logger logger = LoggerFactory.getLogger(URLFromNodePortImpl.class);
 
   public String getURL(Service service, String portName, String namespace, KubernetesClient client) {
-    ServicePort port = URLFromServiceUtil.getServicePortByName(service, portName);
+    ServicePort port = ServiceToURLProvider.getServicePortByName(service, portName);
     String serviceProto = port.getProtocol();
     NodePortUrlComponents urlComponents = null;
     Integer nodePort = port.getNodePort();

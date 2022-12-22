@@ -27,7 +27,7 @@ public class URLFromIngressImpl implements ServiceToURLProvider {
 
   @Override
   public String getURL(Service service, String portName, String namespace, KubernetesClient client) {
-    ServicePort port = URLFromServiceUtil.getServicePortByName(service, portName);
+    ServicePort port = ServiceToURLProvider.getServicePortByName(service, portName);
     String serviceName = service.getMetadata().getName();
     if (port == null) {
       throw new RuntimeException("Couldn't find port: " + portName + " for service " + service.getMetadata().getName());

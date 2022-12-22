@@ -722,27 +722,47 @@ public class BaseOperation<T extends HasMetadata, L extends KubernetesResourceLi
   }
 
   protected Scale handleScale(Scale scaleParam) {
-    try {
-      return handleScale(getCompleteResourceUrl().toString(), scaleParam);
-    } catch (InterruptedException ie) {
-      Thread.currentThread().interrupt();
-      throw KubernetesClientException.launderThrowable(forOperationType("scale"), ie);
-    } catch (IOException e) {
-      throw KubernetesClientException.launderThrowable(forOperationType("scale"), e);
-    }
-
+    return operation(Scope.RESOURCE, "PUT", scaleParam, Scale.class, "scale");
   }
 
   protected Status handleDeploymentRollback(DeploymentRollback deploymentRollback) {
-    try {
-      return handleDeploymentRollback(getCompleteResourceUrl().toString(), deploymentRollback);
-    } catch (InterruptedException ie) {
-      Thread.currentThread().interrupt();
-      throw KubernetesClientException.launderThrowable(forOperationType("rollback"), ie);
-    } catch (IOException e) {
-      throw KubernetesClientException.launderThrowable(forOperationType("rollback"), e);
-    }
+    return operation(Scope.RESOURCE, "POST", deploymentRollback, Status.class, "rollback");
+  }
 
+  protected T handleApproveOrDeny(T csr) {
+    return operation(Scope.RESOURCE, "PUT", csr, type, "approval");
+  }
+
+  @Override
+  public <X> X operation(Scope scope, String method, Object payload, Class<X> responseType, String... path) {
+    String operationName = scope.name();
+    try {
+      URL baseUrl = null;
+      switch (scope) {
+        case NAMESPACE:
+          baseUrl = getNamespacedUrl(namespace, null);
+          break;
+        case TYPE:
+          baseUrl = getNamespacedUrl();
+          break;
+        case RESOURCE:
+          baseUrl = getCompleteResourceUrl();
+          break;
+      }
+      String uri = baseUrl.toString();
+      if (path != null && path.length > 0) {
+        operationName = path[0];
+        uri = Stream.concat(Stream.of(uri), Stream.of(path)).collect(Collectors.joining("/"));
+      }
+      HttpRequest.Builder requestBuilder = httpClient.newHttpRequestBuilder()
+          .uri(uri);
+      if (payload != null) {
+        requestBuilder.method(method, JSON, Serialization.asJson(payload));
+      }
+      return handleResponse(requestBuilder, responseType);
+    } catch (IOException e) {
+      throw KubernetesClientException.launderThrowable(forOperationType(operationName), e);
+    }
   }
 
   protected T handleGet(URL resourceUrl) throws InterruptedException, IOException {

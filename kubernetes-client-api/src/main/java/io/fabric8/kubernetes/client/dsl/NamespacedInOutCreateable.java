@@ -16,5 +16,5 @@
 
 package io.fabric8.kubernetes.client.dsl;
 
-public interface NamespacedInOutCreateable<I, O> extends Namespaceable<InOutCreateable<I, O>> {
+public interface NamespacedInOutCreateable<I, O> extends Namespaceable<InOutCreateable<I, O>>, InOutCreateable<I, O> {
 }

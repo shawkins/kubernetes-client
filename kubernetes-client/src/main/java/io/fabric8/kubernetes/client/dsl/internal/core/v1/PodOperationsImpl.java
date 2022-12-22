@@ -52,7 +52,6 @@ import io.fabric8.kubernetes.client.dsl.internal.PodOperationContext.StreamConte
 import io.fabric8.kubernetes.client.dsl.internal.PortForwarderWebsocket;
 import io.fabric8.kubernetes.client.dsl.internal.uploadable.PodUpload;
 import io.fabric8.kubernetes.client.http.HttpClient;
-import io.fabric8.kubernetes.client.http.HttpRequest;
 import io.fabric8.kubernetes.client.http.WebSocket;
 import io.fabric8.kubernetes.client.lib.FilenameUtils;
 import io.fabric8.kubernetes.client.utils.URLUtils;
@@ -251,21 +250,13 @@ public class PodOperationsImpl extends HasMetadataOperation<Pod, PodList, PodRes
         throw new KubernetesClientException("Name not specified, but operation requires it.");
       }
 
-      URL requestUrl = new URL(URLUtils.join(getResourceUrl().toString(), "eviction"));
-      HttpRequest.Builder requestBuilder = httpClient.newHttpRequestBuilder()
-          .post(JSON, JSON_MAPPER.writeValueAsString(eviction)).url(requestUrl);
-      handleResponse(requestBuilder, null);
+      operation(Scope.RESOURCE, "POST", eviction, null, "eviction");
       return true;
     } catch (KubernetesClientException e) {
       if (e.getCode() != HTTP_TOO_MANY_REQUESTS) {
         throw e;
       }
       return false;
-    } catch (IOException exception) {
-      throw KubernetesClientException.launderThrowable(forOperationType("evict"), exception);
-    } catch (InterruptedException interruptedException) {
-      Thread.currentThread().interrupt();
-      throw KubernetesClientException.launderThrowable(forOperationType("evict"), interruptedException);
     }
   }
 

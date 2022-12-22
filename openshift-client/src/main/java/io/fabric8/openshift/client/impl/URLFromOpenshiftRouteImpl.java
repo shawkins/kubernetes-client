@@ -21,7 +21,6 @@ import io.fabric8.kubernetes.api.model.ServicePort;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.ServiceToURLProvider;
-import io.fabric8.kubernetes.client.utils.internal.URLFromServiceUtil;
 import io.fabric8.openshift.api.model.Route;
 import io.fabric8.openshift.client.OpenShiftClient;
 import org.slf4j.Logger;
@@ -36,7 +35,7 @@ public class URLFromOpenshiftRouteImpl implements ServiceToURLProvider {
   @Override
   public String getURL(Service service, String portName, String namespace, KubernetesClient client) {
     String serviceName = service.getMetadata().getName();
-    ServicePort port = URLFromServiceUtil.getServicePortByName(service, portName);
+    ServicePort port = ServiceToURLProvider.getServicePortByName(service, portName);
     if (port != null && port.getName() != null && client.isAdaptable(OpenShiftClient.class)) {
       try {
         String serviceProtocol = port.getProtocol();

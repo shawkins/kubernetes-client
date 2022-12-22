@@ -24,6 +24,7 @@ import io.fabric8.kubernetes.api.model.KubernetesResource;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.RootPaths;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.NamespacedInOutCreateable;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.http.HttpClient;
 
@@ -141,6 +142,19 @@ public interface Client extends Closeable {
    */
   <T extends HasMetadata, L extends KubernetesResourceList<T>, R extends Resource<T>> MixedOperation<T, L, R> resources(
       Class<T> resourceType, Class<L> listClass, Class<R> resourceClass);
+
+  /**
+   * Typed API for managing create only resources.
+   *
+   * @param <I>
+   * @param <O>
+   * @param inType
+   * @param outType
+   * @return
+   */
+  <I extends KubernetesResource, O extends KubernetesResource> NamespacedInOutCreateable<I, O> createOnlyResources(
+      Class<I> inType,
+      Class<O> outType);
 
   /**
    * Typed API for managing resources. Any properly annotated POJO can be utilized as a resource.

@@ -17,6 +17,9 @@
 package io.fabric8.kubernetes.client;
 
 import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.ServicePort;
+
+import java.util.Objects;
 
 public interface ServiceToURLProvider {
   enum ServiceToUrlImplPriority {
@@ -40,4 +43,17 @@ public interface ServiceToURLProvider {
   int getPriority();
 
   String getURL(Service service, String portName, String namespace, KubernetesClient client);
+
+  static ServicePort getServicePortByName(Service service, String portName) {
+    if (portName.isEmpty()) {
+      return service.getSpec().getPorts().iterator().next();
+    }
+  
+    for (ServicePort servicePort : service.getSpec().getPorts()) {
+      if (Objects.equals(servicePort.getName(), portName)) {
+        return servicePort;
+      }
+    }
+    return null;
+  }
 }

@@ -25,8 +25,6 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Preconditions;
 import io.fabric8.kubernetes.api.model.Status;
 import io.fabric8.kubernetes.api.model.StatusBuilder;
-import io.fabric8.kubernetes.api.model.autoscaling.v1.Scale;
-import io.fabric8.kubernetes.api.model.extensions.DeploymentRollback;
 import io.fabric8.kubernetes.client.Client;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClientException;
@@ -436,39 +434,6 @@ public class OperationSupport {
   }
 
   /**
-   * Replace Scale of specified Kubernetes Resource
-   *
-   * @param resourceUrl Kubernetes resource URL
-   * @param scale Scale object which we want to inject
-   * @return updated Scale object
-   * @throws InterruptedException in case thread is interrupted
-   * @throws IOException in some other I/O problem
-   */
-  protected Scale handleScale(String resourceUrl, Scale scale) throws InterruptedException, IOException {
-    HttpRequest.Builder requestBuilder = httpClient.newHttpRequestBuilder().uri(resourceUrl + "/scale");
-    if (scale != null) {
-      requestBuilder.put(JSON, JSON_MAPPER.writeValueAsString(scale));
-    }
-    return handleResponse(requestBuilder, Scale.class);
-  }
-
-  /**
-   * Create rollback of a Deployment
-   *
-   * @param resourceUrl resource url
-   * @param deploymentRollback DeploymentRollback resource
-   * @return Status
-   * @throws InterruptedException in case thread is interrupted
-   * @throws IOException in some other I/O problem
-   */
-  protected Status handleDeploymentRollback(String resourceUrl, DeploymentRollback deploymentRollback)
-      throws InterruptedException, IOException {
-    HttpRequest.Builder requestBuilder = httpClient.newHttpRequestBuilder().uri(resourceUrl + "/rollback").post(JSON,
-        JSON_MAPPER.writeValueAsString(deploymentRollback));
-    return handleResponse(requestBuilder, Status.class);
-  }
-
-  /**
    * Send an http get.
    *
    * @param resourceUrl resource URL to be processed
@@ -486,13 +451,6 @@ public class OperationSupport {
 
   protected Map<String, String> getParameters() {
     return Collections.emptyMap();
-  }
-
-  protected <T extends HasMetadata> T handleApproveOrDeny(T csr, Class<T> type) throws IOException, InterruptedException {
-    String uri = URLUtils.join(getResourceUrl(null, csr.getMetadata().getName(), false).toString(), "approval");
-    HttpRequest.Builder requestBuilder = httpClient.newHttpRequestBuilder()
-        .put(JSON, JSON_MAPPER.writeValueAsString(csr)).uri(uri);
-    return handleResponse(requestBuilder, type);
   }
 
   /**
@@ -559,7 +517,7 @@ public class OperationSupport {
    * @throws InterruptedException Interrupted Exception
    * @throws IOException IOException
    */
-  protected <T> T handleResponse(HttpRequest.Builder requestBuilder, Class<T> type) throws InterruptedException, IOException {
+  protected <T> T handleResponse(HttpRequest.Builder requestBuilder, Class<T> type) throws IOException {
     return handleResponse(requestBuilder, type, getParameters());
   }
 
@@ -810,9 +768,6 @@ public class OperationSupport {
         throw e;
       }
       return null;
-    } catch (InterruptedException ie) {
-      Thread.currentThread().interrupt();
-      throw KubernetesClientException.launderThrowable(ie);
     } catch (IOException e) {
       throw KubernetesClientException.launderThrowable(e);
     }

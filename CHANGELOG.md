@@ -16,6 +16,7 @@
 * Fix #4574: fromServer has been deprecated - it no longer needs to be called.  All get() operations will fetch the resource(s) from the api server.  If you need the context item that was passed in from a resource, load, or resourceList methods, use the item or items method.
 * Fix #4633: client.run().withRunConfig was deprecated.  Use withNewRunConfig instead.
 * Fix #4663: Config.maxConcurrentRequests and Config.maxConcurrentRequestsPerHost will no longer be used.  Instead they will default to unlimited for all clients.  Due to the ability of the fabric8 client to start long running requests (either websocket or regular http) and how this is treated by the underlying clients you can easily exhaust these values and enter a state where the client is unresponsive without any additional information on what is occurring.
+* Fix #4014: Support for Openshift 3.9 and 3.10 have been dropped because the RoleBinding logic no longer supports setting both the subjects and groups and the usernames and groupnames.  You may still use a newer client against legacy versions if you take responsibility for setting the usernames and groupnames fields on your own.
 
 ### 6.3.1 (2022-12-15)
 

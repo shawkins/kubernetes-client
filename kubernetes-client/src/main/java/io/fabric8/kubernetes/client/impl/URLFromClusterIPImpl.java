@@ -19,7 +19,6 @@ import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServicePort;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.ServiceToURLProvider;
-import io.fabric8.kubernetes.client.utils.internal.URLFromServiceUtil;
 
 public class URLFromClusterIPImpl implements ServiceToURLProvider {
   @Override
@@ -29,7 +28,7 @@ public class URLFromClusterIPImpl implements ServiceToURLProvider {
 
   @Override
   public String getURL(Service service, String portName, String namespace, KubernetesClient client) {
-    ServicePort port = URLFromServiceUtil.getServicePortByName(service, portName);
+    ServicePort port = ServiceToURLProvider.getServicePortByName(service, portName);
     if (port != null && service.getSpec().getType().equals("ClusterIP")) {
       return port.getProtocol().toLowerCase() + "://" + service.getSpec().getClusterIP() + ":" + port.getPort();
     }

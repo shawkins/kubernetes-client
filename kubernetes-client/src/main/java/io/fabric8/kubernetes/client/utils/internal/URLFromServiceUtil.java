@@ -16,8 +16,17 @@
 
 package io.fabric8.kubernetes.client.utils.internal;
 
-import io.fabric8.kubernetes.api.model.*;
-import io.fabric8.kubernetes.api.model.extensions.*;
+import io.fabric8.kubernetes.api.model.HasMetadata;
+import io.fabric8.kubernetes.api.model.IntOrString;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.ServicePort;
+import io.fabric8.kubernetes.api.model.extensions.HTTPIngressPath;
+import io.fabric8.kubernetes.api.model.extensions.HTTPIngressRuleValue;
+import io.fabric8.kubernetes.api.model.extensions.Ingress;
+import io.fabric8.kubernetes.api.model.extensions.IngressBackend;
+import io.fabric8.kubernetes.api.model.extensions.IngressRule;
+import io.fabric8.kubernetes.api.model.extensions.IngressSpec;
+import io.fabric8.kubernetes.client.utils.KubernetesResourceUtil;
 import io.fabric8.kubernetes.client.utils.URLUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -181,23 +190,6 @@ public class URLFromServiceUtil {
   }
 
   public static String getNamespace(HasMetadata entity) {
-    if (entity != null) {
-      return entity.getMetadata() != null ? entity.getMetadata().getNamespace() : null;
-    } else {
-      return null;
-    }
-  }
-
-  public static ServicePort getServicePortByName(Service service, String portName) {
-    if (portName.isEmpty()) {
-      return service.getSpec().getPorts().iterator().next();
-    }
-
-    for (ServicePort servicePort : service.getSpec().getPorts()) {
-      if (Objects.equals(servicePort.getName(), portName)) {
-        return servicePort;
-      }
-    }
-    return null;
+    return KubernetesResourceUtil.getNamespace(entity);
   }
 }

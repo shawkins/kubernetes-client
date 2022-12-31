@@ -13,19 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package io.fabric8.kubernetes.client.jetty;
 
-package io.fabric8.kubernetes.client.dsl;
+import io.fabric8.kubernetes.client.http.AbstractSimultaneousConnectionsTest;
+import io.fabric8.kubernetes.client.http.HttpClient;
 
-/**
- * @deprecated It is no longer necessary to associate parameters prior to deserialization.
- *             <p>
- *             reference {@link MixedOperation} instead
- *
- * @param <T> The Kubernetes resource type.
- * @param <L> The list variant of the Kubernetes resource type.
- * @param <R> The resource operations.
- */
-@Deprecated
-public interface ParameterMixedOperation<T, L, R extends Resource<T>>
-    extends MixedOperation<T, L, R>, Parameterizable<MixedOperation<T, L, R>> {
+@SuppressWarnings("java:S2187")
+public class JettySimultaneousConnectionsTest extends AbstractSimultaneousConnectionsTest {
+  @Override
+  protected HttpClient.Factory getHttpClientFactory() {
+    return new JettyHttpClientFactory();
+  }
 }

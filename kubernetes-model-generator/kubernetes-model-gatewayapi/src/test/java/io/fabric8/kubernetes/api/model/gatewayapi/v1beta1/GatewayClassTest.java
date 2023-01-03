@@ -13,29 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.fabric8.it.names;
+package io.fabric8.kubernetes.api.model.gatewayapi.v1beta1;
 
-import com.fabric8.test.ActiveMQArtemis;
+import io.fabric8.kubernetes.api.model.Namespaced;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
-class TestCRDNames {
-
+class GatewayClassTest {
   @Test
-  void testSingularAndPlural() {
-    // Arrange
-    ActiveMQArtemis x = new ActiveMQArtemis();
-
-    // Act
-    String singular = x.getSingular();
-    String plural = x.getPlural();
-    String name = x.getCRDName();
-
-    // Assert
-    assertEquals("activemqartemis", singular);
-    assertEquals("activemqartemises", plural);
-    assertEquals("activemqartemises.broker.amq.io", name);
+  void isClusterScopedResource() {
+    assertThat(GatewayClass.class.isAssignableFrom(Namespaced.class)).isFalse();
   }
-
 }

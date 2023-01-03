@@ -13,29 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.fabric8.it.names;
+package io.fabric8.java.generator;
 
-import com.fabric8.test.ActiveMQArtemis;
-import org.junit.jupiter.api.Test;
+import java.io.File;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+public interface JavaGenerator {
 
-class TestCRDNames {
-
-  @Test
-  void testSingularAndPlural() {
-    // Arrange
-    ActiveMQArtemis x = new ActiveMQArtemis();
-
-    // Act
-    String singular = x.getSingular();
-    String plural = x.getPlural();
-    String name = x.getCRDName();
-
-    // Assert
-    assertEquals("activemqartemis", singular);
-    assertEquals("activemqartemises", plural);
-    assertEquals("activemqartemises.broker.amq.io", name);
-  }
-
+  /**
+   * Generate Java classes from a CRD file or multiple CRD files and write them to the provided output directory.
+   * 
+   * @param outputDirectory the directory where the generated Java classes will be written.
+   */
+  void run(File outputDirectory);
 }

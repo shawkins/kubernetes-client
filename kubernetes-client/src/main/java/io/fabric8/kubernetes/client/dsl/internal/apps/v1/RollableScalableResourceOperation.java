@@ -173,7 +173,7 @@ public abstract class RollableScalableResourceOperation<T extends HasMetadata, L
   }
 
   @Override
-  public Loggable inContainer(String id) {
+  public RollableScalableResource<T> inContainer(String id) {
     return newInstance(rollingOperationContext.withContainerId(id), context);
   }
 

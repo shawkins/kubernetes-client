@@ -39,7 +39,6 @@ import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.dsl.internal.HasMetadataOperation;
 import io.fabric8.kubernetes.client.http.HttpClient;
 import io.fabric8.kubernetes.client.impl.BaseClient;
-import io.fabric8.kubernetes.client.impl.ExtensionsAPIGroupClient;
 import io.fabric8.kubernetes.client.impl.KubernetesClientImpl;
 import io.fabric8.kubernetes.client.utils.HttpClientUtils;
 import io.fabric8.kubernetes.client.utils.TokenRefreshInterceptor;
@@ -501,11 +500,6 @@ public class OpenShiftClientImpl extends KubernetesClientImpl
   @Override
   protected Config configCopy() {
     return new OpenShiftConfigBuilder(getConfiguration()).build();
-  }
-
-  @Override
-  public ExtensionsAPIGroupClient extensions() {
-    return adapt(ExtensionsAPIGroupClient.class);
   }
 
   @SuppressWarnings("unchecked")

@@ -19,7 +19,6 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.policy.v1.Eviction;
 
 public interface PodResource extends Resource<Pod>,
-    Loggable,
     Containerable<String, ContainerResource>,
     ContainerResource,
     PortForwardable {

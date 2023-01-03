@@ -259,7 +259,7 @@ public class DeploymentConfigOperationsImpl
   }
 
   @Override
-  public Loggable inContainer(String id) {
+  public DeploymentConfigOperationsImpl inContainer(String id) {
     return new DeploymentConfigOperationsImpl(rollingOperationContext.withContainerId(id), context);
   }
 

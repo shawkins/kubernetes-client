@@ -195,7 +195,7 @@ public class JobOperationsImpl extends HasMetadataOperation<Job, JobList, Scalab
   }
 
   @Override
-  public Loggable inContainer(String id) {
+  public JobOperationsImpl inContainer(String id) {
     return new JobOperationsImpl(podControllerOperationContext.withContainerId(id), context);
   }
 

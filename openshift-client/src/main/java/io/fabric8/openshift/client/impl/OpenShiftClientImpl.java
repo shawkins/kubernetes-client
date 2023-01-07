@@ -162,7 +162,6 @@ import io.fabric8.openshift.client.dsl.ProjectRequestOperation;
 import io.fabric8.openshift.client.dsl.TemplateResource;
 import io.fabric8.openshift.client.dsl.internal.apps.DeploymentConfigOperationsImpl;
 import io.fabric8.openshift.client.dsl.internal.build.BuildConfigOperationsImpl;
-import io.fabric8.openshift.client.dsl.internal.build.BuildOperationsImpl;
 import io.fabric8.openshift.client.dsl.internal.core.TemplateOperationsImpl;
 import io.fabric8.openshift.client.dsl.internal.project.ProjectOperationsImpl;
 import io.fabric8.openshift.client.internal.OpenShiftOAuthInterceptor;
@@ -258,7 +257,7 @@ public class OpenShiftClientImpl extends KubernetesClientImpl
 
   @Override
   public MixedOperation<Build, BuildList, BuildResource> builds() {
-    return new BuildOperationsImpl(this);
+    return resources(Build.class, BuildList.class, BuildResource.class);
   }
 
   @Override

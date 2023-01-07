@@ -62,9 +62,13 @@ public class OpenShiftExtensionAdapter implements ExtensionAdapter<OpenShiftClie
   }
 
   @Override
+  public void registerResources(ResourceFactory factory) {
+    factory.register(Build.class, new BuildOperationsImpl());
+  }
+
+  @Override
   public void registerHandlers(Handlers handlers) {
     handlers.register(BuildConfig.class, BuildConfigOperationsImpl::new);
-    handlers.register(Build.class, BuildOperationsImpl::new);
     handlers.register(DeploymentConfig.class, DeploymentConfigOperationsImpl::new);
     handlers.register(Template.class, TemplateOperationsImpl::new);
   }

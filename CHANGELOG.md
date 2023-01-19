@@ -1,20 +1,43 @@
+* Fix #4014: Support for Openshift 3.9 and 3.10 have been dropped because the RoleBinding logic no longer supports setting both the subjects and groups and the usernames and groupnames.  You may still use a newer client against legacy versions if you take responsibility for setting the usernames and groupnames fields on your own.
+
 ## CHANGELOG
 
-### 6.4-SNAPSHOT
+### 6.5-SNAPSHOT
 
 #### Bugs
 
 #### Improvements
-* Fix #4637: all pod operations that require a ready / succeeded pod may use withReadyWaitTimeout, which supersedes withLogWaitTimeout.
-* Fix #4633: provided inline access to all RunConfig builder methods via run().withNewRunConfig()
-* Fix #4654: Fix GatewayClass to not implement Namespaced interface
-* Fix #4670: the initial informer listing will use a resourceVersion of 0 to utilize the watch cache if possible.  This means that the initial cache state when the informer is returned, or the start future is completed, may not be as fresh as the previous behavior which forced the latest version.  It will of course become more consistent as the watch will already have been established.
-* Fix #4694: [java-generator] Option to override the package name of the generated code.
-* Fix #4720: interceptors close any response body if the response is not a 2xx response.
 
 #### Dependency Upgrade
 
 #### New Features
+
+#### _**Note**_: Breaking changes
+
+### 6.4.0 (2023-01-19)
+
+#### Bugs
+* Fix #4249: prevent the over-logging of errors after the websocket has been closed
+* Fix #4563: fallback to current class-loader when looking for HttpClient implementations
+* Fix #4650: allowing for comments at the end of certificate files
+* Fix #4668: use acme.cert-manager.io ApiGroup for Orders and Challenges
+* Fix #4726: prevent the over-logging of errors after the websocket has been closed
+* Fix #4729: ensuring `CompletableFuture` cancel will close / cancel the underlying resource
+* Fix #4735: StandardHttpClient sends Expect 100-continue header value
+
+#### Improvements
+* Fix #4622: Java Generator Maven Plugin can use CRDs from remote URLs
+* Fix #4633: provided inline access to all RunConfig builder methods via run().withNewRunConfig()
+* Fix #4637: all pod operations that require a ready / succeeded pod may use withReadyWaitTimeout, which supersedes withLogWaitTimeout.
+* Fix #4654: Fix GatewayClass to not implement Namespaced interface
+* Fix #4670: the initial informer listing will use a resourceVersion of 0 to utilize the watch cache if possible.  This means that the initial cache state when the informer is returned, or the start future is completed, may not be as fresh as the previous behavior which forced the latest version.  It will of course become more consistent as the watch will already have been established.
+* Fix #4694: [java-generator] Option to override the package name of the generated code.
+* Fix #4720: interceptors close any response body if the response is not a 2xx response.
+* Fix #4734: @KubernetesTest annotation can be used in base test classes
+* Fix #4734: @KubernetesTest creates an ephemeral Namespace optionally (can opt-out)
+
+#### New Features
+* Fix #2764: Vert.x HttpClient implementation
 
 #### _**Note**_: Breaking changes
 * Fix #3972: deprecated Parameterizable and methods on Serialization accepting parameters - that was only needed as a workaround for non-string parameters.  You should instead include those parameter values in the map passed to processLocally.
@@ -23,20 +46,20 @@
 * Fix #4574: fromServer has been deprecated - it no longer needs to be called.  All get() operations will fetch the resource(s) from the api server.  If you need the context item that was passed in from a resource, load, or resourceList methods, use the item or items method.
 * Fix #4633: client.run().withRunConfig was deprecated.  Use withNewRunConfig instead.
 * Fix #4663: Config.maxConcurrentRequests and Config.maxConcurrentRequestsPerHost will no longer be used.  Instead they will default to unlimited for all clients.  Due to the ability of the fabric8 client to start long running requests (either websocket or regular http) and how this is treated by the underlying clients you can easily exhaust these values and enter a state where the client is unresponsive without any additional information on what is occurring.
-* Fix #4014: Support for Openshift 3.9 and 3.10 have been dropped because the RoleBinding logic no longer supports setting both the subjects and groups and the usernames and groupnames.  You may still use a newer client against legacy versions if you take responsibility for setting the usernames and groupnames fields on your own.
+* Fix #4769: java-generator Fix encoding of empty strings as valid enums
 
 ### 6.3.1 (2022-12-15)
 
 #### Bugs
 * Fix #4666: fixed okhttp calls not explicitly closing
 * Fix #4673: fixes a regression in sharing the OpenShiftOAuthInterceptor token
-* Fix #4677: [java-generator] Fix default encoding of enums
+* Fix #4677: java-generator Fix default encoding of enums
 
 ### 6.3.0 (2022-12-12)
 
 #### Bugs
 * Fix #4159: ensure the token refresh obeys how the Config was created
-* Fix #4447: `isSupported` doesn't check all of the applicable API Groups
+* Fix #4447: `isSupported` doesn't check all the applicable API Groups
 * Fix #4473: correcting backoff interval regression introduced in #4365 (6.2.0)
 * Fix #4491: added a more explicit shutdown exception for okhttp
 * Fix #4509: do not reuse KeyFactory instance after a failure
@@ -56,8 +79,8 @@
 * Fix #4014: added support for OpenShift Build log version.
 * Fix #4201: Removed sendAsync from the individual http client implementations
 * Fix #4355: for exec, attach, upload, and copy operations the container id/name will be validated or chosen prior to the remote call.  You may also use the kubectl.kubernetes.io/default-container annotation to specify the default container.
-* Fix #4530: generalizing the Serialization logic to allow for primitive values and clarifying the type expectations.
 * Fix #4363: exposed ResourceCompare.metadataChanged
+* Fix #4530: generalizing the Serialization logic to allow for primitive values and clarifying the type expectations.
 
 #### New Features
 * Fix #4136: added support for fieldValidation as a dsl method for POST/PUT/PATCH operations
@@ -181,6 +204,7 @@ fix #4373: NO_PROXY should allow URIs with hyphens ("circleci-internal-outer-bui
   - `io.fabric8.chaosmesh.v1alpha1.AwsChaos` => `io.fabric8.chaosmesh.v1alpha1.AWSChaos`
   - `io.fabric8.chaosmesh.v1alpha1.IoChaos` => `io.fabric8.chaosmesh.v1alpha1.IOChaos`
   - `io.fabric8.chaosmesh.v1alpha1.PodIoChaos` => `io.fabric8.chaosmesh.v1alpha1.PodIOChaos`
+* Fix #4247: Proxy matching no longer supports having wildcard characters in `NO_PROXY`. The behavior has been changed to match [GNU WGet Spec](https://www.gnu.org/software/wget/manual/html_node/Proxies.html)
 
 ### 5.12.3 (2022-07-27)
 
@@ -1822,3 +1846,4 @@ like the delete of a custom resource.
    * Fixed issue of SecurityContextConstraints not working - https://github.com/fabric8io/kubernetes-client/pull/982
      Note :- This got fixed by fixing model - https://github.com/fabric8io/kubernetes-model/pull/274
      Dependencies Upgrade
+

@@ -22,10 +22,14 @@ import io.fabric8.kubernetes.client.OperationInfo;
 import io.fabric8.kubernetes.client.dsl.Nameable;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.dsl.WritableOperation;
+import io.fabric8.kubernetes.client.http.HttpRequest;
+import lombok.Builder;
+import lombok.Getter;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -103,6 +107,18 @@ public interface ExtensibleResource<T> extends Resource<T> {
     RESOURCE
   }
 
-  <X> X operation(Scope scope, String method, Object payload, Class<X> responseType, String... path);
+  @Getter
+  @Builder
+  public static class OperationRequest {
+    @Builder.Default
+    Scope scope = Scope.RESOURCE;
+    @Builder.Default
+    String method = "GET";
+    Object payload;
+    Object parameters;
+    Consumer<HttpRequest.Builder> requestCustomizer;
+  }
+
+  <X> X operation(Class<X> responseType, Consumer<OperationRequest.OperationRequestBuilder> request, String... path);
 
 }

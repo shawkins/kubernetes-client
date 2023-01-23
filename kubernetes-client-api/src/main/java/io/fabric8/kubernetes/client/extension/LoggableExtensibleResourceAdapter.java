@@ -16,7 +16,6 @@
 
 package io.fabric8.kubernetes.client.extension;
 
-import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.LogWatch;
 import io.fabric8.kubernetes.client.dsl.PodResource;
 import io.fabric8.kubernetes.client.dsl.TimestampBytesLimitTerminateTimeTailPrettyLoggable;
@@ -24,7 +23,6 @@ import io.fabric8.kubernetes.client.dsl.TimestampBytesLimitTerminateTimeTailPret
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
-import java.net.URL;
 import java.util.List;
 
 public abstract class LoggableExtensibleResourceAdapter<T> extends ExtensibleResourceAdapter<T>
@@ -123,26 +121,13 @@ public abstract class LoggableExtensibleResourceAdapter<T> extends ExtensibleRes
   private void waitUntilPodsBecomesReady() {
     List<PodResource> podOps = getPodsToWaitFor();
 
-    PodOperationUtil.waitUntilReadyOrSucceded(podOp, podLogWaitTimeout);
-    waitForBuildPodToBecomeReady(podOps,
-        operationContext.getReadyWaitTimeout() != null ? operationContext.getReadyWaitTimeout() : DEFAULT_POD_LOG_WAIT_TIMEOUT);
-  }
-
-  protected String getLogParameters() {
-    String params = operationContext.getLogParameters();
-    if (version != null) {
-      params += ("&version=" + version);
-    }
-    return params;
+    //PodOperationUtil.waitUntilReadyOrSucceded(podOp, podLogWaitTimeout);
+    //waitForBuildPodToBecomeReady(podOps,
+    //    operationContext.getReadyWaitTimeout() != null ? operationContext.getReadyWaitTimeout() : DEFAULT_POD_LOG_WAIT_TIMEOUT);
   }
 
   private <T> T doGetLog(Class<T> type) {
-    try {
-      URL url = getResourceLogUrl(false);
-      return handleRawGet(url, type);
-    } catch (Throwable t) {
-      throw KubernetesClientException.launderThrowable(forOperationType("doGetLog"), t);
-    }
+    return this.resource.operation(type, b -> b.parameters(loggingContext));
   }
 
 }

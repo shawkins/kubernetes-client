@@ -19,10 +19,12 @@ package io.fabric8.kubernetes.client.extension;
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
 import io.fabric8.kubernetes.client.Client;
 import io.fabric8.kubernetes.client.OperationInfo;
+import io.fabric8.kubernetes.client.extension.ExtensibleResource.OperationRequest.OperationRequestBuilder;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -134,8 +136,8 @@ public abstract class ExtensibleResourceAdapter<T> extends ResourceAdapter<T> im
   }
 
   @Override
-  public <X> X operation(Scope scope, String method, Object payload, Class<X> responseType, String... path) {
-    return this.resource.operation(scope, method, payload, responseType, path);
+  public <X> X operation(Class<X> responseType, Consumer<OperationRequestBuilder> request, String... path) {
+    return this.resource.operation(responseType, request, path);
   }
 
 }

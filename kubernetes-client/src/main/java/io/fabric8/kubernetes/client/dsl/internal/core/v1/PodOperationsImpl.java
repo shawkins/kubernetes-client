@@ -255,7 +255,7 @@ public class PodOperationsImpl extends HasMetadataOperation<Pod, PodList, PodRes
         throw new KubernetesClientException("Name not specified, but operation requires it.");
       }
 
-      operation(Scope.RESOURCE, "POST", eviction, null, "eviction");
+      operation(null, b -> b.method("POST").payload(eviction), "eviction");
       return true;
     } catch (KubernetesClientException e) {
       if (e.getCode() != HTTP_TOO_MANY_REQUESTS) {

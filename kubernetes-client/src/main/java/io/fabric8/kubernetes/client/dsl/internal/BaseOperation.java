@@ -49,6 +49,7 @@ import io.fabric8.kubernetes.client.dsl.Waitable;
 import io.fabric8.kubernetes.client.dsl.base.PatchContext;
 import io.fabric8.kubernetes.client.dsl.base.PatchType;
 import io.fabric8.kubernetes.client.extension.ExtensibleResource;
+import io.fabric8.kubernetes.client.extension.ExtensibleResource.OperationRequest.OperationRequestBuilder;
 import io.fabric8.kubernetes.client.http.HttpRequest;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
@@ -722,20 +723,33 @@ public class BaseOperation<T extends HasMetadata, L extends KubernetesResourceLi
   }
 
   protected Scale handleScale(Scale scaleParam) {
-    return operation(Scope.RESOURCE, "PUT", scaleParam, Scale.class, "scale");
+    return operation(Scale.class, b -> b.method("PUT").payload(scaleParam), "scale");
   }
 
   protected Status handleDeploymentRollback(DeploymentRollback deploymentRollback) {
-    return operation(Scope.RESOURCE, "POST", deploymentRollback, Status.class, "rollback");
+    return operation(Status.class, b -> b.method("POST").payload(deploymentRollback), "rollback");
   }
 
   protected T handleApproveOrDeny(T csr) {
-    return operation(Scope.RESOURCE, "PUT", csr, type, "approval");
+    return operation(type, b -> b.method("PUT").payload(csr), "approval");
   }
 
   @Override
-  public <X> X operation(Scope scope, String method, Object payload, Class<X> responseType, String... path) {
+  public <X> X operation(Class<X> responseType, Consumer<OperationRequestBuilder> request, String... path) {
+    OperationRequestBuilder operation = OperationRequest.builder();
+    request.accept(operation);
+    OperationRequest or = operation.build();
+    if (or.getParameters() != null) {
+      if (or.getParameters() instanceof String) {
+
+      } else {
+        Map<String, Object> map = Serialization.jsonMapper().convertValue(or.getParameters(), Map.class);
+        map.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).collect(Collectors.joining("&"));
+      }
+    }
+    Scope scope = or.getScope();
     String operationName = scope.name();
+
     try {
       URL baseUrl = null;
       switch (scope) {
@@ -756,8 +770,15 @@ public class BaseOperation<T extends HasMetadata, L extends KubernetesResourceLi
       }
       HttpRequest.Builder requestBuilder = httpClient.newHttpRequestBuilder()
           .uri(uri);
+      Object payload = or.getPayload();
       if (payload != null) {
-        requestBuilder.method(method, JSON, Serialization.asJson(payload));
+        if (payload instanceof String) {
+          requestBuilder.method(or.getMethod(), JSON, (String) payload);
+        } else {
+          requestBuilder.method(or.getMethod(), JSON, Serialization.asJson(payload));
+        }
+      } else if (!"GET".equals(or.getMethod())) {
+        throw new AssertionError("not yet supported");
       }
       return handleResponse(requestBuilder, responseType);
     } catch (IOException e) {

@@ -4,6 +4,7 @@
 
 #### Bugs
 * Fix #4793: (java-generator) Fix broken POJO generation when two schema properties collide into a single field name
+* Fix #4802: config.refresh() erases token specified when building initial config
 * Fix #4910: Pod file upload will now detect if it's not completely sent to the api server
 * Fix #4963: Openshift Client return 403 when use websocket
 * Fix #4985: triggering the immediate cleanup of the okhttp idle task
@@ -1964,3 +1965,4 @@ like the delete of a custom resource.
    * Fixed issue of SecurityContextConstraints not working - https://github.com/fabric8io/kubernetes-client/pull/982
      Note :- This got fixed by fixing model - https://github.com/fabric8io/kubernetes-model/pull/274
      Dependencies Upgrade
+

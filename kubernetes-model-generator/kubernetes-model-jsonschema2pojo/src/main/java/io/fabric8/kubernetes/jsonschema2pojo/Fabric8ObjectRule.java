@@ -21,7 +21,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonTypeResolver;
 import com.sun.codemodel.JAnnotationArrayMember;
 import com.sun.codemodel.JAnnotationUse;
+import com.sun.codemodel.JClass;
 import com.sun.codemodel.JClassAlreadyExistsException;
+import com.sun.codemodel.JClassContainer;
 import com.sun.codemodel.JCodeModel;
 import com.sun.codemodel.JDefinedClass;
 import com.sun.codemodel.JPackage;
@@ -57,6 +59,10 @@ public class Fabric8ObjectRule extends ObjectRule {
     if (node.has(INTERFACE_TYPE_PROPERTY)) {
       // interface
       return createInterface(node, _package);
+    }
+
+    if (node.has("existingJavaType") && "java.util.Map<String, byte[]>".equals(node.get("existingJavaType").asText())) {
+      return resolveMapOfByteArrays(_package);
     }
 
     // rest of types
@@ -97,4 +103,16 @@ public class Fabric8ObjectRule extends ObjectRule {
 
     return newType;
   }
+
+  public static JClass resolveMapOfByteArrays(JClassContainer _package) {
+    JClass _class = _package.owner().ref("java.util.Map");
+
+    JClass[] genericArgumentClasses = new JClass[2];
+    genericArgumentClasses[0] = _package.owner().ref("java.lang.String");
+    genericArgumentClasses[1] = _package.owner().BYTE.array();
+
+    _class = _class.narrow(genericArgumentClasses);
+    return _class;
+  }
+
 }

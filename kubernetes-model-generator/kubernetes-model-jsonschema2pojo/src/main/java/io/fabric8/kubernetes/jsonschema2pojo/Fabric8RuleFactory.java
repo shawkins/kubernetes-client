@@ -55,4 +55,9 @@ public class Fabric8RuleFactory extends RuleFactory {
   public Rule<JClassContainer, JType> getEnumRule() {
     return new Fabric8EnumRule(this);
   }
+
+  @Override
+  public Rule<JClassContainer, JType> getTypeRule() {
+    return new Fabric8TypeRule(this);
+  }
 }

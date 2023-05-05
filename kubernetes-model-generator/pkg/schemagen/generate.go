@@ -125,20 +125,22 @@ func (g *schemaGenerator) generateReference(t reflect.Type) string {
 	return "#/definitions/" + g.qualifiedName(t)
 }
 
-func (g *schemaGenerator) javaTypeArrayList(t reflect.Type) string {
-	typeName := g.javaTypeWrapPrimitive(t)
+func (g *schemaGenerator) javaTypeArray(t reflect.Type) string {
+	typeName := g.javaType(t)
 	switch typeName {
-	case "Byte":
-		return "String"
+	case "byte":
+		return "byte[]"
 	default:
-		return "java.util.ArrayList<" + typeName + ">"
+		return "java.util.ArrayList<" + g.javaTypeWrapPrimitive(t) + ">"
 	}
 }
 
 func (g *schemaGenerator) javaTypeWrapPrimitive(t reflect.Type) string {
 	typeName := g.javaType(t)
 	switch typeName {
-	case "bool":
+	case "byte":
+		return "Byte"
+	case "boolean":
 		return "Boolean"
 	case "char":
 		return "Character"
@@ -178,43 +180,37 @@ func (g *schemaGenerator) javaType(t reflect.Type) string {
 		case "Time":
 			return "String"
 		case "RawExtension":
-			return "io.fabric8.kubernetes.api.model.KubernetesResource"			
+			return "io.fabric8.kubernetes.api.model.KubernetesResource"
 		case "List":
 			return pkgDesc.JavaPackage + ".KubernetesList"
 		default:
 			return pkgDesc.JavaPackage + "." + t.Name()
 		}
-		typeName, ok := g.typeNames[t]
-		if ok {
-			return pkgDesc.JavaPackage + "." + typeName
-		}
-		return pkgDesc.JavaPackage + "." + t.Name()
 	}
 	switch t.Kind() {
 	case reflect.Bool:
-		return "bool"
+		return "boolean"
 	case reflect.Uint8:
-	  return "Byte"
+		return "byte"
 	case reflect.Int, reflect.Int8, reflect.Int16,
 		reflect.Int32, reflect.Uint,
 		reflect.Uint16, reflect.Uint32:
 		return "int"
 	case reflect.Int64, reflect.Uint64:
-		return "Long"
-	case reflect.Float32, reflect.Float64, reflect.Complex64,
-		reflect.Complex128:
+		return "long"
+	case reflect.Float32, reflect.Float64:
 		return "double"
 	case reflect.String:
 		return "String"
 	case reflect.Array, reflect.Slice:
-		return g.javaTypeArrayList(t.Elem())
+		return g.javaTypeArray(t.Elem())
 	case reflect.Map:
 		return "java.util.Map<String," + g.javaTypeWrapPrimitive(t.Elem()) + ">"
 	default:
-	    if t.Name() == "RawExtension" {
-	        return "io.fabric8.kubernetes.api.model.KubernetesResource"
-	    }
-	    if t.Name() == "Time" {
+		if t.Name() == "RawExtension" {
+			return "io.fabric8.kubernetes.api.model.KubernetesResource"
+		}
+		if t.Name() == "Time" {
 			return "String"
 		}
 		if len(t.Name()) == 0 && t.NumField() == 0 {
@@ -301,7 +297,7 @@ func (g *schemaGenerator) generate(t reflect.Type, moduleName string) (*JSONSche
 					ExistingJavaType: javaType,
 				}
 			}
-			
+
 			s.Definitions[name] = value
 			s.Resources[resource] = v
 		}
@@ -334,6 +330,7 @@ func (g *schemaGenerator) getPropertyDescriptor(t reflect.Type, desc string, omi
 				Type:        "integer",
 				Description: desc,
 			},
+			// could expand java type mappings and use the existing type
 		}
 	case reflect.Int64, reflect.Uint64:
 		return JSONPropertyDescriptor{
@@ -341,16 +338,19 @@ func (g *schemaGenerator) getPropertyDescriptor(t reflect.Type, desc string, omi
 				Type:        "integer",
 				Description: desc,
 			},
+			// this is inconsistent with the rest of the primitive handling
 			ExistingJavaTypeDescriptor: &ExistingJavaTypeDescriptor{
 				ExistingJavaType: "Long",
 			},
 		}
-	case reflect.Float32, reflect.Float64, reflect.Complex64,
-		reflect.Complex128:
+	case reflect.Float32, reflect.Float64:
 		return JSONPropertyDescriptor{
 			JSONDescriptor: &JSONDescriptor{
 				Type:        "number",
 				Description: desc,
+			},
+			ExistingJavaTypeDescriptor: &ExistingJavaTypeDescriptor{
+				ExistingJavaType: g.javaType(t),
 			},
 		}
 	case reflect.String:
@@ -362,11 +362,16 @@ func (g *schemaGenerator) getPropertyDescriptor(t reflect.Type, desc string, omi
 		}
 	case reflect.Array:
 	case reflect.Slice:
-		if g.javaTypeArrayList(t.Elem()) == "String" {
+		arrayType := g.javaTypeArray(t.Elem())
+		if !strings.HasPrefix(arrayType, "java.util.ArrayList") {
+			// special case for byte[]
 			return JSONPropertyDescriptor{
 				JSONDescriptor: &JSONDescriptor{
 					Type:        "string",
 					Description: desc,
+				},
+				ExistingJavaTypeDescriptor: &ExistingJavaTypeDescriptor{
+					ExistingJavaType: arrayType,
 				},
 			}
 		}
@@ -394,11 +399,10 @@ func (g *schemaGenerator) getPropertyDescriptor(t reflect.Type, desc string, omi
 			},
 		}
 	case reflect.Struct:
-		definedType, ok := g.types[t]
+		_, ok := g.types[t]
 		if !ok {
 			g.types[t] = &JSONObjectDescriptor{}
-			definedType = g.generateObjectDescriptor(t)
-			g.types[t] = definedType
+			g.types[t] = g.generateObjectDescriptor(t)
 		}
 		return JSONPropertyDescriptor{
 			JSONReferenceDescriptor: &JSONReferenceDescriptor{
@@ -557,14 +561,14 @@ func (g *schemaGenerator) isNamespaceScopedResource(t reflect.Type) bool {
 }
 
 func (g *schemaGenerator) isSubresourceContainingMetadata(t reflect.Type) bool {
-  subResourcesContainingMetadataList := []string{
-    "JobTemplateSpec",
-    "PodTemplateSpec",
-    "PersistentVolumeClaimTemplate",
-    "MachineSpec",
-    "MachineTemplateSpec",
-    "ResourceClaimTemplateSpec",
-  }
+	subResourcesContainingMetadataList := []string{
+		"JobTemplateSpec",
+		"PodTemplateSpec",
+		"PersistentVolumeClaimTemplate",
+		"MachineSpec",
+		"MachineTemplateSpec",
+		"ResourceClaimTemplateSpec",
+	}
 	return Contains(subResourcesContainingMetadataList, t.Name())
 }
 
@@ -698,14 +702,14 @@ func (g *schemaGenerator) isClusterScopedResource(t reflect.Type) bool {
 		"github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1/MachineConfigPool",
 		"github.com/openshift/machine-config-operator/pkg/apis/machineconfiguration.openshift.io/v1/MachineConfig",
 		"github.com/openshift/cluster-autoscaler-operator/pkg/apis/autoscaling/v1/ClusterAutoscaler",
-                "github.com/openshift/hive/apis/hive/v1/ClusterImageSet",
-                "github.com/openshift/hive/apis/hive/v1/SelectorSyncIdentityProvider",
-                "github.com/openshift/hive/apis/hive/v1/SelectorSyncSet",
-                "github.com/openshift/hive/apis/hive/v1/HiveConfig",
+		"github.com/openshift/hive/apis/hive/v1/ClusterImageSet",
+		"github.com/openshift/hive/apis/hive/v1/SelectorSyncIdentityProvider",
+		"github.com/openshift/hive/apis/hive/v1/SelectorSyncSet",
+		"github.com/openshift/hive/apis/hive/v1/HiveConfig",
 		"sigs.k8s.io/kube-storage-version-migrator/pkg/apis/migration/v1alpha1/StorageState",
 		"sigs.k8s.io/kube-storage-version-migrator/pkg/apis/migration/v1alpha1/StorageVersionMigration",
-                "sigs.k8s.io/gateway-api/apis/v1alpha2/GatewayClass",
-                "sigs.k8s.io/gateway-api/apis/v1beta1/GatewayClass",
+		"sigs.k8s.io/gateway-api/apis/v1alpha2/GatewayClass",
+		"sigs.k8s.io/gateway-api/apis/v1beta1/GatewayClass",
 	}
 
 	return Contains(clusterScopedResourcesList, t.PkgPath()+"/"+t.Name())

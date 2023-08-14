@@ -18,9 +18,14 @@ package io.fabric8.crd.generator;
 import io.fabric8.crd.example.basic.Basic;
 import io.fabric8.crd.example.basic.BasicSpec;
 import io.fabric8.crd.example.basic.BasicStatus;
+import io.fabric8.crd.example.complex.Complex;
 import io.fabric8.crd.example.cyclic.Cyclic;
 import io.fabric8.crd.example.cyclic.CyclicList;
-import io.fabric8.crd.example.inherited.*;
+import io.fabric8.crd.example.inherited.BaseSpec;
+import io.fabric8.crd.example.inherited.BaseStatus;
+import io.fabric8.crd.example.inherited.Child;
+import io.fabric8.crd.example.inherited.ChildSpec;
+import io.fabric8.crd.example.inherited.ChildStatus;
 import io.fabric8.crd.example.joke.Joke;
 import io.fabric8.crd.example.joke.JokeRequest;
 import io.fabric8.crd.example.joke.JokeRequestSpec;
@@ -35,7 +40,13 @@ import io.fabric8.crd.example.simplest.SimplestSpec;
 import io.fabric8.crd.example.simplest.SimplestStatus;
 import io.fabric8.crd.generator.CRDGenerator.AbstractCRDOutput;
 import io.fabric8.crd.generator.utils.Types;
-import io.fabric8.kubernetes.api.model.apiextensions.v1.*;
+import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceColumnDefinition;
+import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinition;
+import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinitionNames;
+import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinitionSpec;
+import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinitionVersion;
+import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceValidation;
+import io.fabric8.kubernetes.api.model.apiextensions.v1.JSONSchemaProps;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import io.fabric8.kubernetes.model.Scope;
@@ -44,16 +55,26 @@ import org.opentest4j.AssertionFailedError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CRDGeneratorTest {
 
@@ -138,9 +159,13 @@ class CRDGeneratorTest {
     assertEquals(0, generator.generate());
     assertEquals(0, generator.detailedGenerate().numberOfGeneratedCRDs());
 
+    final List<String> versions = new ArrayList<>(2);
+    versions.add("v1");
+    versions.add("v1beta1");
+
     final CRDGenerationInfo info = generator
         .customResourceClasses(Simplest.class, Child.class, Joke.class, JokeRequest.class)
-        .forCRDVersions("v1", "v1beta1")
+        .forCRDVersions(versions)
         .withOutput(output).detailedGenerate();
 
     assertEquals(4 * 2, info.numberOfGeneratedCRDs());
@@ -385,6 +410,49 @@ class CRDGeneratorTest {
       assertEquals("string", excluded.getItems().getSchema().getType());
       assertEquals(6, excluded.getItems().getSchema().getEnum().size());
     });
+  }
+
+  @Test
+  void checkGenerationIsDeterministic() throws Exception {
+    // generated CRD
+    final File crdFolder = Files.createTempDirectory("crd-").toFile();
+    final CustomResourceInfo info = CustomResourceInfo.fromClass(Complex.class);
+    final CRDGenerationInfo crdInfo = newCRDGenerator().inOutputDir(crdFolder).forCRDVersions(info.version())
+        .customResources(info).customResourceClasses(Complex.class).detailedGenerate();
+    final File crdFile = new File(crdInfo.getCRDInfos(info.crdName()).get(info.version()).getFilePath());
+
+    // expected CRD
+    final URL crdResource = CRDGeneratorTest.class.getResource("/" + crdFile.getName());
+    assertNotNull(crdResource);
+    final File crdResourceFile = new File(crdResource.getFile());
+
+    final long pos = compareFilesByByte(crdFile.toPath(), crdResourceFile.toPath());
+    assertEquals(-1, pos, "CRD was not generated deterministically, compare expected file " + crdResourceFile.getAbsolutePath()
+        + " with generated file " + crdFile.getAbsolutePath());
+    // only delete the generated files if the test is successful
+    assertTrue(crdFile.delete());
+    assertTrue(crdFolder.delete());
+  }
+
+  private long compareFilesByByte(Path path1, Path path2) {
+    try (BufferedInputStream bis1 = new BufferedInputStream(Files.newInputStream(path1));
+        BufferedInputStream bis2 = new BufferedInputStream(Files.newInputStream(path2))) {
+      int ch;
+      long pos = 1;
+      while ((ch = bis1.read()) != -1) {
+        if (ch != bis2.read()) {
+          return pos;
+        }
+        pos++;
+      }
+      if (bis2.read() == -1) {
+        return -1;
+      } else {
+        return pos;
+      }
+    } catch (final IOException e) {
+      throw new AssertionError("Cannot compare files: " + e.getMessage());
+    }
   }
 
   @Test

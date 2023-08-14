@@ -209,8 +209,8 @@ class CRDGeneratorTest {
     CustomResourceDefinitionSpec spec = definition.getSpec();
     final List<CustomResourceDefinitionVersion> versions = spec.getVersions();
     assertEquals(2, versions.size());
-    assertTrue(versions.stream().filter(v -> v.getName().equals("v1")).count() == 1);
-    assertTrue(versions.stream().filter(v -> v.getName().equals("v2")).count() == 1);
+    assertEquals(1, versions.stream().filter(v -> v.getName().equals("v1")).count());
+    assertEquals(1, versions.stream().filter(v -> v.getName().equals("v2")).count());
 
     Class<?>[] mustContainTraversedClasses = { Multiple.class, MultipleSpec.class,
         io.fabric8.crd.example.multiple.v2.Multiple.class, io.fabric8.crd.example.multiple.v2.MultipleSpec.class };
@@ -239,7 +239,7 @@ class CRDGeneratorTest {
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> generator.detailedGenerate(),
+        generator::detailedGenerate,
         "An IllegalArgument Exception hasn't been thrown when generating a CRD with cyclic references");
   }
 
@@ -257,7 +257,7 @@ class CRDGeneratorTest {
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> generator.detailedGenerate(),
+        generator::detailedGenerate,
         "An IllegalArgument Exception hasn't been thrown when generating a CRD with cyclic references");
   }
 
@@ -542,7 +542,7 @@ class CRDGeneratorTest {
     private final Map<String, CustomResourceInfo> infos = new ConcurrentHashMap<>();
 
     @Override
-    protected ByteArrayOutputStream createStreamFor(String crdName) throws IOException {
+    protected ByteArrayOutputStream createStreamFor(String crdName) {
       return new ByteArrayOutputStream();
     }
 

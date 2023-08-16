@@ -16,13 +16,9 @@
 package io.fabric8.crd.generator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.TextNode;
 import io.fabric8.crd.generator.utils.Types;
 import io.fabric8.crd.generator.v1.CustomResourceHandler;
 import io.fabric8.kubernetes.api.model.HasMetadata;
-import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceColumnDefinition;
-import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinitionVersion;
-import io.fabric8.kubernetes.api.model.apiextensions.v1.JSONSchemaProps;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.fabric8.kubernetes.client.utils.ApiVersionUtil;
 import org.slf4j.Logger;
@@ -54,20 +50,6 @@ public class CRDGenerator {
   private Map<String, CustomResourceInfo> infos;
 
   private static final ObjectMapper YAML_MAPPER = DeterministicObjectMapper.builder()
-      .withConverter(TextNode.class, TextNode::textValue)
-      .withConverter(HasMetadata.class, hasMetadata -> hasMetadata.getMetadata().getName())
-      .withConverter(CustomResourceDefinitionVersion.class, CustomResourceDefinitionVersion::getName)
-      .withConverter(io.fabric8.kubernetes.api.model.apiextensions.v1beta1.CustomResourceDefinitionVersion.class,
-          io.fabric8.kubernetes.api.model.apiextensions.v1beta1.CustomResourceDefinitionVersion::getName)
-      // printer columns should be ordered in the alphabetical order of their JSON path
-      .withConverter(CustomResourceColumnDefinition.class, CustomResourceColumnDefinition::getJsonPath)
-      .withConverter(io.fabric8.kubernetes.api.model.apiextensions.v1beta1.CustomResourceColumnDefinition.class,
-          io.fabric8.kubernetes.api.model.apiextensions.v1beta1.CustomResourceColumnDefinition::getJSONPath)
-      // JSON schema props should be ordered in the alphabetical order of their type, then their ID
-      .withConverter(JSONSchemaProps.class, JSONSchemaProps::getType, JSONSchemaProps::getId)
-      .withConverter(io.fabric8.kubernetes.api.model.apiextensions.v1beta1.JSONSchemaProps.class,
-          io.fabric8.kubernetes.api.model.apiextensions.v1beta1.JSONSchemaProps::getType,
-          io.fabric8.kubernetes.api.model.apiextensions.v1beta1.JSONSchemaProps::getId)
       .build();
 
   public CRDGenerator() {

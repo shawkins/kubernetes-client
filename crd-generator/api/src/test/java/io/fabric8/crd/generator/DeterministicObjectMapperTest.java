@@ -17,11 +17,9 @@ package io.fabric8.crd.generator;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.TextNode;
 import io.fabric8.crd.generator.annotation.PrinterColumn;
 import io.fabric8.crd.generator.v1.CustomResourceHandler;
 import io.fabric8.kubernetes.api.model.Namespaced;
-import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceColumnDefinition;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.fabric8.kubernetes.model.annotation.Group;
 import io.fabric8.kubernetes.model.annotation.Kind;
@@ -31,15 +29,12 @@ import org.junit.jupiter.api.Test;
 import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class DeterministicObjectMapperTest {
 
   @Test
   void checkSortingWithConverter() throws Exception {
     final JsonNode version = getCRDVersion(DeterministicObjectMapper.builder()
-        .withConverter(TextNode.class, TextNode::textValue)
-        .withConverter(CustomResourceColumnDefinition.class, CustomResourceColumnDefinition::getJsonPath)
         .build());
 
     // with the TestNode converter the order of the enum is deterministic
@@ -63,20 +58,12 @@ class DeterministicObjectMapperTest {
     final JsonNode version = getCRDVersion(DeterministicObjectMapper.builder()
         .build());
 
-    // by default the order of the enum isn't deterministic
-    final JsonNode unsortedEnum = getSchemaProperties(version).get("unsortedEnum").get("enum");
-    assertNotEquals(Arrays.asList("A", "B", "C", "D"), Arrays.asList(
-        unsortedEnum.get(0).textValue(),
-        unsortedEnum.get(1).textValue(),
-        unsortedEnum.get(2).textValue(),
-        unsortedEnum.get(3).textValue()));
-
-    // with reflection the printer columns are sorted by name
+    // printer columns are sorted by jsonPath
     final JsonNode printerColumns = getPrinterColumns(version);
-    assertEquals(".spec.value", printerColumns.get(0).get("jsonPath").textValue());
-    assertEquals("Column A", printerColumns.get(0).get("name").textValue());
-    assertEquals(".spec.unsortedEnum", printerColumns.get(1).get("jsonPath").textValue());
-    assertEquals("Column B", printerColumns.get(1).get("name").textValue());
+    assertEquals(".spec.unsortedEnum", printerColumns.get(0).get("jsonPath").textValue());
+    assertEquals("Column B", printerColumns.get(0).get("name").textValue());
+    assertEquals(".spec.value", printerColumns.get(1).get("jsonPath").textValue());
+    assertEquals("Column A", printerColumns.get(1).get("name").textValue());
   }
 
   private static JsonNode getCRDVersion(final ObjectMapper mapper) throws Exception {

@@ -16,13 +16,13 @@
 package io.fabric8.crd.generator;
 
 import io.fabric8.crd.generator.decorator.Decorator;
-import io.fabric8.crd.generator.visitor.*;
+import io.fabric8.crd.generator.visitor.AdditionalPrinterColumnDetector;
+import io.fabric8.crd.generator.visitor.ClassDependenciesVisitor;
+import io.fabric8.crd.generator.visitor.LabelSelectorPathDetector;
+import io.fabric8.crd.generator.visitor.SpecReplicasPathDetector;
+import io.fabric8.crd.generator.visitor.StatusReplicasPathDetector;
 import io.fabric8.kubernetes.client.utils.Utils;
-import io.sundr.builder.Visitor;
-import io.sundr.model.AnnotationRef;
-import io.sundr.model.Property;
-import io.sundr.model.TypeDef;
-import io.sundr.model.TypeDefBuilder;
+import org.yaml.snakeyaml.introspector.Property;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -54,7 +54,7 @@ public abstract class AbstractCustomResourceHandler {
     final String name = config.crdName();
     final String version = config.version();
 
-    TypeDef def = config.definition();
+    Class<?> def = config.definition();
 
     SpecReplicasPathDetector specReplicasPathDetector = new SpecReplicasPathDetector();
     StatusReplicasPathDetector statusReplicasPathDetector = new StatusReplicasPathDetector();
@@ -63,7 +63,7 @@ public abstract class AbstractCustomResourceHandler {
 
     ClassDependenciesVisitor traversedClassesVisitor = new ClassDependenciesVisitor(config.crClassName(), name);
 
-    List<Visitor<TypeDefBuilder>> visitors = new ArrayList<>();
+    List<Object> visitors = new ArrayList<>();
     if (config.specClassName().isPresent()) {
       visitors.add(specReplicasPathDetector);
     }
@@ -99,7 +99,7 @@ public abstract class AbstractCustomResourceHandler {
     });
   }
 
-  private TypeDef visitTypeDef(TypeDef def, List<Visitor<TypeDefBuilder>> visitors) {
+  private Class<?> visitTypeDef(Class<?> def, List<Object> visitors) {
     if (visitors.isEmpty()) {
       return def;
     }
@@ -110,24 +110,20 @@ public abstract class AbstractCustomResourceHandler {
     }
   }
 
-  private TypeDef visitTypeDefSequentially(TypeDef def, List<Visitor<TypeDefBuilder>> visitors) {
-    TypeDefBuilder builder = new TypeDefBuilder(def);
+  private Class<?> visitTypeDefSequentially(Class<?> def, List<Object> visitors) {
     for (Visitor<TypeDefBuilder> visitor : visitors) {
       builder.accept(visitor);
     }
     return builder.build();
   }
 
-  private TypeDef visitTypeDefInParallel(TypeDef def, List<Visitor<TypeDefBuilder>> visitors) {
+  private Class<?> visitTypeDefInParallel(Class<?> def, List<Object> visitors) {
     final ExecutorService executorService = Executors.newFixedThreadPool(
         Math.min(visitors.size(), Runtime.getRuntime().availableProcessors()));
     try {
       List<CompletableFuture<Void>> futures = new ArrayList<>();
       for (Visitor<TypeDefBuilder> visitor : visitors) {
         futures.add(CompletableFuture.runAsync(() -> {
-          // in this case we're not building a new typedef,
-          // instead we just need to traverse the object graph.
-          TypeDefBuilder builder = new TypeDefBuilder(def);
           builder.accept(visitor);
         }, executorService));
       }
@@ -168,13 +164,12 @@ public abstract class AbstractCustomResourceHandler {
    * These paths
    *
    * @param config the gathered {@link CustomResourceInfo} used as basis for the CRD generation
-   * @param def the {@link TypeDef} associated with the {@link io.fabric8.kubernetes.client.CustomResource} from which the CRD
-   *        is generated
+   * @param def the Class of the custom resource
    * @param specReplicasPath an optionally detected path of field defining spec replicas
    * @param statusReplicasPath an optionally detected path of field defining status replicas
    * @param labelSelectorPath an optionally detected path of field defining `status.selector`
    */
-  protected abstract void addDecorators(CustomResourceInfo config, TypeDef def,
+  protected abstract void addDecorators(CustomResourceInfo config, Class<?> def,
       Optional<String> specReplicasPath, Optional<String> statusReplicasPath,
       Optional<String> labelSelectorPath);
 }

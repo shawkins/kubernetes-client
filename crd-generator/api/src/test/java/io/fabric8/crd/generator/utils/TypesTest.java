@@ -51,15 +51,9 @@ public class TypesTest {
 
   @Test
   void shouldFindInheritedStatusProperty() {
-    final TypeDef def = Types.typeDefFrom(Child.class);
-    final Optional<Property> p = Types.findStatusProperty(def);
-    assertTrue(p.isPresent());
-    final Property property = p.get();
-    final TypeRef typeRef = property.getTypeRef();
-    assertTrue(typeRef instanceof ClassRef);
-    final ClassRef classRef = (ClassRef) typeRef;
-    final SpecAndStatus specAndStatus = Types.resolveSpecAndStatusTypes(def);
-    assertEquals(specAndStatus.getStatusClassName(), classRef.getFullyQualifiedName());
+    final SpecAndStatus specAndStatus = Types.resolveSpecAndStatusTypes(Child.class);
+    assertEquals("io.fabric8.crd.example.inherited.ChildStatus", specAndStatus.getStatusClassName());
+    assertEquals("io.fabric8.crd.example.inherited.ChildSpec", specAndStatus.getSpecClassName());
   }
 
   @Test

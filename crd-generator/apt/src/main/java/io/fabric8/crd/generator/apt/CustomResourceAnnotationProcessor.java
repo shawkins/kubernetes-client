@@ -37,15 +37,6 @@ import io.sundr.adapter.apt.AptContext;
 import io.sundr.model.TypeDef;
 import io.sundr.model.repo.DefinitionRepository;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.lang.annotation.Annotation;
-import java.net.URI;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
@@ -59,6 +50,15 @@ import javax.tools.Diagnostic;
 import javax.tools.FileObject;
 import javax.tools.StandardLocation;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.lang.annotation.Annotation;
+import java.net.URI;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
 @SupportedAnnotationTypes({ "io.fabric8.kubernetes.model.annotation.Version" })
 public class CustomResourceAnnotationProcessor extends AbstractProcessor {
 
@@ -70,6 +70,7 @@ public class CustomResourceAnnotationProcessor extends AbstractProcessor {
     return SourceVersion.latestSupported();
   }
 
+  @Override
   @SuppressWarnings("unchecked")
   public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
     if (roundEnv.processingOver()) {
@@ -126,9 +127,6 @@ public class CustomResourceAnnotationProcessor extends AbstractProcessor {
     TypeDef definition = Adapters.adaptType(customResource, AptContext.getContext());
     definition = Types.unshallow(definition);
 
-    if (CustomResourceInfo.DESCRIBE_TYPE_DEFS) {
-      Types.output(definition);
-    }
     final Name crClassName = customResource.getQualifiedName();
 
     SpecAndStatus specAndStatus = Types.resolveSpecAndStatusTypes(definition);

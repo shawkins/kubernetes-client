@@ -41,7 +41,6 @@ import io.fabric8.crd.example.simplest.Simplest;
 import io.fabric8.crd.example.simplest.SimplestSpec;
 import io.fabric8.crd.example.simplest.SimplestStatus;
 import io.fabric8.crd.generator.CRDGenerator.AbstractCRDOutput;
-import io.fabric8.crd.generator.utils.Types;
 import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceColumnDefinition;
 import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinition;
 import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinitionNames;
@@ -329,8 +328,7 @@ class CRDGeneratorTest {
     try {
       test.test(customResource);
     } catch (AssertionFailedError e) {
-      // output type def and crd
-      Types.output(output.get(keyFor(customResource)).definition());
+      // output crd
       output.outputCRD(customResource);
       throw e;
     }

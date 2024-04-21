@@ -15,8 +15,6 @@
  */
 package io.fabric8.crd.generator;
 
-import io.fabric8.crd.generator.visitor.ClassDependenciesVisitor;
-
 import java.io.File;
 import java.net.URI;
 import java.util.HashMap;

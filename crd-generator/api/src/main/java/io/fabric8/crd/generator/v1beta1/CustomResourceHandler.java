@@ -35,7 +35,6 @@ import io.fabric8.crd.generator.v1beta1.decorator.SetServedVersionDecorator;
 import io.fabric8.crd.generator.v1beta1.decorator.SetStorageVersionDecorator;
 import io.fabric8.crd.generator.v1beta1.decorator.SortCustomResourceDefinitionVersionDecorator;
 import io.fabric8.crd.generator.v1beta1.decorator.SortPrinterColumnsDecorator;
-import io.sundr.model.TypeDef;
 
 import java.util.Optional;
 
@@ -55,7 +54,7 @@ public class CustomResourceHandler extends AbstractCustomResourceHandler {
   }
 
   @Override
-  protected void addDecorators(CustomResourceInfo config, TypeDef def,
+  protected void addDecorators(CustomResourceInfo config, Class<?> def,
       Optional<String> specReplicasPath, Optional<String> statusReplicasPath,
       Optional<String> labelSelectorPath) {
     final String name = config.crdName();
@@ -68,7 +67,7 @@ public class CustomResourceHandler extends AbstractCustomResourceHandler {
     resources.decorate(new AddCustomResourceDefinitionVersionDecorator(name, version));
 
     resources.decorate(new AddSchemaToCustomResourceDefinitionVersionDecorator(name, version,
-        JsonSchema.from(def, "kind", "apiVersion", "metadata")));
+        JsonSchema.from(def)));
 
     specReplicasPath.ifPresent(path -> {
       resources.decorate(new AddSubresourcesDecorator(name, version));

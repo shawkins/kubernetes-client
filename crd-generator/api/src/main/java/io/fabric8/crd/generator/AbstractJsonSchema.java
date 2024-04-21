@@ -15,639 +15,454 @@
  */
 package io.fabric8.crd.generator;
 
+import com.fasterxml.jackson.annotation.JsonFormat.Value;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.AnnotationIntrospector;
+import com.fasterxml.jackson.databind.BeanDescription;
+import com.fasterxml.jackson.databind.BeanProperty;
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationConfig;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonObjectFormatVisitor;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.util.Annotations;
 import com.fasterxml.jackson.module.jsonSchema.JsonSchema;
 import com.fasterxml.jackson.module.jsonSchema.JsonSchemaGenerator;
+import com.fasterxml.jackson.module.jsonSchema.factories.JsonSchemaFactory;
+import com.fasterxml.jackson.module.jsonSchema.factories.SchemaFactoryWrapper;
+import com.fasterxml.jackson.module.jsonSchema.factories.VisitorContext;
+import com.fasterxml.jackson.module.jsonSchema.factories.WrapperFactory;
 import com.fasterxml.jackson.module.jsonSchema.types.ArraySchema.Items;
+import com.fasterxml.jackson.module.jsonSchema.types.ObjectSchema;
+import com.fasterxml.jackson.module.jsonSchema.types.ObjectSchema.SchemaAdditionalProperties;
+import com.fasterxml.jackson.module.jsonSchema.types.ReferenceSchema;
+import com.fasterxml.jackson.module.jsonSchema.types.StringSchema;
+import com.fasterxml.jackson.module.jsonSchema.types.ValueTypeSchema;
 import io.fabric8.crd.generator.InternalSchemaSwaps.SwapResult;
+import io.fabric8.crd.generator.annotation.PreserveUnknownFields;
+import io.fabric8.crd.generator.annotation.SchemaFrom;
 import io.fabric8.crd.generator.annotation.SchemaSwap;
-import io.fabric8.crd.generator.utils.Types;
+import io.fabric8.generator.annotation.Default;
+import io.fabric8.generator.annotation.Max;
+import io.fabric8.generator.annotation.Min;
+import io.fabric8.generator.annotation.Nullable;
+import io.fabric8.generator.annotation.Pattern;
+import io.fabric8.generator.annotation.Required;
 import io.fabric8.generator.annotation.ValidationRule;
-import io.fabric8.kubernetes.api.model.Duration;
+import io.fabric8.generator.annotation.ValidationRules;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
-import io.sundr.builder.internal.functions.TypeAs;
-import io.sundr.model.AnnotationRef;
-import io.sundr.model.ClassRef;
-import io.sundr.model.Method;
-import io.sundr.model.PrimitiveRefBuilder;
-import io.sundr.model.Property;
-import io.sundr.model.TypeDef;
-import io.sundr.model.TypeRef;
-import io.sundr.model.functions.GetDefinition;
-import io.sundr.utils.Strings;
+import io.fabric8.kubernetes.client.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static io.sundr.model.utils.Types.BOOLEAN_REF;
-import static io.sundr.model.utils.Types.DOUBLE_REF;
-import static io.sundr.model.utils.Types.FLOAT_REF;
-import static io.sundr.model.utils.Types.INT_REF;
-import static io.sundr.model.utils.Types.LONG_REF;
-import static io.sundr.model.utils.Types.STRING_REF;
-import static io.sundr.model.utils.Types.VOID;
+import static io.fabric8.crd.generator.CRDGenerator.YAML_MAPPER;
+import static java.util.Optional.ofNullable;
 
 /**
  * Encapsulates the common logic supporting OpenAPI schema generation for CRD generation.
  *
  * @param <T> the concrete type of the generated JSON Schema
  * @param <B> the concrete type of the JSON Schema builder
+ * @param <V> the concrete type of the validation rule
  */
-public abstract class AbstractJsonSchema<T, B> {
+public abstract class AbstractJsonSchema<T, B, V> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractJsonSchema.class);
 
-  protected static final TypeDef OBJECT = TypeDef.forName(Object.class.getName());
-  protected static final TypeDef QUANTITY = TypeDef.forName(Quantity.class.getName());
-  protected static final TypeDef DURATION = TypeDef.forName(Duration.class.getName());
-  protected static final TypeDef INT_OR_STRING = TypeDef.forName(IntOrString.class.getName());
-
-  protected static final TypeRef OBJECT_REF = OBJECT.toReference();
-  protected static final TypeRef QUANTITY_REF = QUANTITY.toReference();
-  protected static final TypeRef DURATION_REF = DURATION.toReference();
-  protected static final TypeRef INT_OR_STRING_REF = INT_OR_STRING.toReference();
-
-  protected static final TypeDef DATE = TypeDef.forName(Date.class.getName());
-  protected static final TypeRef DATE_REF = DATE.toReference();
-
-  private static final String VALUE = "value";
-
-  private static final String INT_OR_STRING_MARKER = "int_or_string";
-  private static final String STRING_MARKER = "string";
-  private static final String INTEGER_MARKER = "integer";
-  private static final String NUMBER_MARKER = "number";
-  private static final String BOOLEAN_MARKER = "boolean";
-
-  protected static final TypeRef P_INT_REF = new PrimitiveRefBuilder().withName("int").build();
-  protected static final TypeRef P_LONG_REF = new PrimitiveRefBuilder().withName("long").build();
-  protected static final TypeRef P_FLOAT_REF = new PrimitiveRefBuilder().withName("float").build();
-  protected static final TypeRef P_DOUBLE_REF = new PrimitiveRefBuilder().withName("double").build();
-  protected static final TypeRef P_BOOLEAN_REF = new PrimitiveRefBuilder().withName(BOOLEAN_MARKER)
-      .build();
-
-  private static final Map<TypeRef, String> COMMON_MAPPINGS = new HashMap<>();
-  public static final String ANNOTATION_JSON_PROPERTY = "com.fasterxml.jackson.annotation.JsonProperty";
-  public static final String ANNOTATION_JSON_PROPERTY_DESCRIPTION = "com.fasterxml.jackson.annotation.JsonPropertyDescription";
-  public static final String ANNOTATION_JSON_IGNORE = "com.fasterxml.jackson.annotation.JsonIgnore";
-  public static final String ANNOTATION_JSON_ANY_GETTER = "com.fasterxml.jackson.annotation.JsonAnyGetter";
-  public static final String ANNOTATION_JSON_ANY_SETTER = "com.fasterxml.jackson.annotation.JsonAnySetter";
-  public static final String ANNOTATION_DEFAULT = "io.fabric8.generator.annotation.Default";
-  public static final String ANNOTATION_MIN = "io.fabric8.generator.annotation.Min";
-  public static final String ANNOTATION_MAX = "io.fabric8.generator.annotation.Max";
-  public static final String ANNOTATION_PATTERN = "io.fabric8.generator.annotation.Pattern";
-  public static final String ANNOTATION_NULLABLE = "io.fabric8.generator.annotation.Nullable";
-  public static final String ANNOTATION_REQUIRED = "io.fabric8.generator.annotation.Required";
-  public static final String ANNOTATION_SCHEMA_FROM = "io.fabric8.crd.generator.annotation.SchemaFrom";
-  public static final String ANNOTATION_PERSERVE_UNKNOWN_FIELDS = "io.fabric8.crd.generator.annotation.PreserveUnknownFields";
-  public static final String ANNOTATION_SCHEMA_SWAP = "io.fabric8.crd.generator.annotation.SchemaSwap";
-  public static final String ANNOTATION_SCHEMA_SWAPS = "io.fabric8.crd.generator.annotation.SchemaSwaps";
-  public static final String ANNOTATION_VALIDATION_RULE = "io.fabric8.generator.annotation.ValidationRule";
-  public static final String ANNOTATION_VALIDATION_RULES = "io.fabric8.generator.annotation.ValidationRules";
-
-  public static final String JSON_NODE_TYPE = "com.fasterxml.jackson.databind.JsonNode";
-  public static final String ANY_TYPE = "io.fabric8.kubernetes.api.model.AnyType";
-
+  // TODO: remove static state
   private static final JsonSchemaGenerator GENERATOR;
-  private static final Set<String> COMPLEX_JAVA_TYPES = new HashSet<>();
+  private static final SerializationConfig SERIALIZATION_CONFIG;
+  private static final KubernetesSerialization KUBERNETES_SERIALIZATION;
+  private static final Map<String, GeneratorObjectSchema> SEEN = new HashMap<>();
 
   static {
-    COMMON_MAPPINGS.put(STRING_REF, STRING_MARKER);
-    COMMON_MAPPINGS.put(DATE_REF, STRING_MARKER);
-    COMMON_MAPPINGS.put(INT_REF, INTEGER_MARKER);
-    COMMON_MAPPINGS.put(P_INT_REF, INTEGER_MARKER);
-    COMMON_MAPPINGS.put(LONG_REF, INTEGER_MARKER);
-    COMMON_MAPPINGS.put(P_LONG_REF, INTEGER_MARKER);
-    COMMON_MAPPINGS.put(FLOAT_REF, NUMBER_MARKER);
-    COMMON_MAPPINGS.put(P_FLOAT_REF, NUMBER_MARKER);
-    COMMON_MAPPINGS.put(DOUBLE_REF, NUMBER_MARKER);
-    COMMON_MAPPINGS.put(P_DOUBLE_REF, NUMBER_MARKER);
-    COMMON_MAPPINGS.put(BOOLEAN_REF, BOOLEAN_MARKER);
-    COMMON_MAPPINGS.put(P_BOOLEAN_REF, BOOLEAN_MARKER);
-    COMMON_MAPPINGS.put(QUANTITY_REF, INT_OR_STRING_MARKER);
-    COMMON_MAPPINGS.put(INT_OR_STRING_REF, INT_OR_STRING_MARKER);
-    COMMON_MAPPINGS.put(DURATION_REF, STRING_MARKER);
     ObjectMapper mapper = new ObjectMapper();
+    SERIALIZATION_CONFIG = mapper.getSerializationConfig();
     // initialize with client defaults
-    new KubernetesSerialization(mapper, false);
-    GENERATOR = new JsonSchemaGenerator(mapper);
+    KUBERNETES_SERIALIZATION = new KubernetesSerialization(mapper, false);
+    GENERATOR = new JsonSchemaGenerator(mapper, new WrapperFactory() {
+
+      @Override
+      public SchemaFactoryWrapper getWrapper(SerializerProvider provider) {
+        return new KubernetesSchemaFactoryWrapper(provider, this);
+      }
+
+      @Override
+      public SchemaFactoryWrapper getWrapper(SerializerProvider provider, VisitorContext rvc) {
+        SchemaFactoryWrapper wrapper = getWrapper(provider);
+        wrapper.setVisitorContext(rvc);
+        return wrapper;
+      }
+
+    });
   }
 
-  public static String getSchemaTypeFor(TypeRef typeRef) {
-    String type = COMMON_MAPPINGS.get(typeRef);
-    if (type == null && typeRef instanceof ClassRef) { // Handle complex types
-      ClassRef classRef = (ClassRef) typeRef;
-      TypeDef def = Types.typeDefFrom(classRef);
-      type = def.isEnum() ? STRING_MARKER : "object";
+  private static final class GeneratorObjectSchema extends ObjectSchema {
+
+    JavaType javaType;
+    Map<String, BeanProperty> beanProperties = new LinkedHashMap<>();
+
+    @Override
+    public void putOptionalProperty(BeanProperty property, JsonSchema jsonSchema) {
+      beanProperties.put(property.getName(), property);
+      super.putOptionalProperty(property, jsonSchema);
     }
-    return type;
+
+    @Override
+    public JsonSchema putProperty(BeanProperty property, JsonSchema value) {
+      beanProperties.put(property.getName(), property);
+      return super.putProperty(property, value);
+    }
+
   }
 
-  protected static class SchemaPropsOptions {
-    final String defaultValue;
-    final Double min;
-    final Double max;
-    final String pattern;
-    final boolean nullable;
-    final boolean required;
-    final boolean preserveUnknownFields;
-    final List<KubernetesValidationRule> validationRules;
+  private static final class KubernetesSchemaFactoryWrapper extends SchemaFactoryWrapper {
 
-    SchemaPropsOptions() {
-      defaultValue = null;
-      min = null;
-      max = null;
-      pattern = null;
-      nullable = false;
-      required = false;
-      preserveUnknownFields = false;
-      validationRules = null;
+    private KubernetesSchemaFactoryWrapper(SerializerProvider p, WrapperFactory wrapperFactory) {
+      super(p, wrapperFactory);
+      this.schemaProvider = new JsonSchemaFactory() {
+
+        @Override
+        public ObjectSchema objectSchema() {
+          return new GeneratorObjectSchema();
+        }
+
+      };
     }
 
-    public SchemaPropsOptions(String defaultValue, Double min, Double max, String pattern,
-        List<KubernetesValidationRule> validationRules,
-        boolean nullable, boolean required, boolean preserveUnknownFields) {
-      this.defaultValue = defaultValue;
-      this.min = min;
-      this.max = max;
-      this.pattern = pattern;
-      this.nullable = nullable;
-      this.required = required;
-      this.preserveUnknownFields = preserveUnknownFields;
-      this.validationRules = validationRules;
+    @Override
+    public JsonObjectFormatVisitor expectObjectFormat(JavaType convertedType) {
+      // TODO: jackson should pass in directly here if there's an anyGetter / setter
+      // so that we may directly mark preserve unknown
+      JsonObjectFormatVisitor result = super.expectObjectFormat(convertedType);
+      ((GeneratorObjectSchema)schema).javaType = convertedType;
+      SEEN.putIfAbsent(this.visitorContext.getSeenSchemaUri(convertedType), (GeneratorObjectSchema)schema);
+      return result;
     }
+  }
 
-    public Optional<String> getDefault() {
-      return Optional.ofNullable(defaultValue);
+  protected List<V> mapValidationRules(List<KubernetesValidationRule> validationRules) {
+    if (validationRules == null) {
+      return Collections.emptyList();
     }
-
-    public Optional<Double> getMin() {
-      return Optional.ofNullable(min);
-    }
-
-    public Optional<Double> getMax() {
-      return Optional.ofNullable(max);
-    }
-
-    public Optional<String> getPattern() {
-      return Optional.ofNullable(pattern);
-    }
-
-    public boolean isNullable() {
-      return nullable;
-    }
-
-    public boolean getRequired() {
-      return required;
-    }
-
-    public boolean isPreserveUnknownFields() {
-      return preserveUnknownFields;
-    }
-
-    public List<KubernetesValidationRule> getValidationRules() {
-      return Optional.ofNullable(validationRules)
-          .orElseGet(Collections::emptyList);
-    }
+    return validationRules.stream()
+        .map(this::mapValidationRule)
+        .collect(Collectors.toList());
   }
 
   /**
-   * Creates the JSON schema for the particular {@link TypeDef}. This is template method where
+   * Creates the JSON schema for the class. This is template method where
    * sub-classes are supposed to provide specific implementations of abstract methods.
    *
    * @param definition The definition.
    * @param ignore a potentially empty list of property names to ignore while generating the schema
    * @return The schema.
    */
-  protected T internalFrom(TypeDef definition, String... ignore) {
+  protected T internalFrom(Class<?> definition, String... ignore) {
     InternalSchemaSwaps schemaSwaps = new InternalSchemaSwaps();
-    return internalFromImpl(definition, new LinkedHashMap<>(), schemaSwaps, ignore);
-  }
-
-  private static ClassRef extractClassRef(Object type) {
-    if (type != null) {
-      if (type instanceof ClassRef) {
-        return (ClassRef) type;
-      } else if (type instanceof Class) {
-        return Types.typeDefFrom((Class<?>) type).toReference();
-      } else {
-        throw new IllegalArgumentException("Unmanaged type passed to the annotation " + type);
-      }
-    } else {
-      return null;
+    JsonSchema schema = toJsonSchema(definition);
+    if (schema instanceof GeneratorObjectSchema) {
+      return internalFromImpl(new LinkedHashMap<>(), schemaSwaps, schema, ignore);
     }
+    return getPropertySchema(new LinkedHashMap<>(), schemaSwaps, null, SERIALIZATION_CONFIG.constructType(definition), schema);
   }
 
-  private void extractSchemaSwaps(ClassRef definitionType, AnnotationRef annotation, InternalSchemaSwaps schemaSwaps) {
-    String fullyQualifiedName = annotation.getClassRef().getFullyQualifiedName();
-    switch (fullyQualifiedName) {
-      case ANNOTATION_SCHEMA_SWAP:
-        extractSchemaSwap(definitionType, annotation, schemaSwaps);
-        break;
-      case ANNOTATION_SCHEMA_SWAPS:
-        Map<String, Object> params = annotation.getParameters();
-        Object[] values = (Object[]) params.get("value");
-        for (Object value : values) {
-          extractSchemaSwap(definitionType, value, schemaSwaps);
-        }
-        break;
-    }
-  }
-
-  private void extractSchemaSwap(ClassRef definitionType, Object annotation, InternalSchemaSwaps schemaSwaps) {
-    if (annotation instanceof SchemaSwap) {
-      SchemaSwap schemaSwap = (SchemaSwap) annotation;
-      schemaSwaps.registerSwap(definitionType,
-          extractClassRef(schemaSwap.originalType()),
+  private void extractSchemaSwaps(Class<?> clazz, InternalSchemaSwaps schemaSwaps) {
+    SchemaSwap[] swaps = clazz.getAnnotationsByType(SchemaSwap.class);
+    for (SchemaSwap schemaSwap : swaps) {
+      schemaSwaps.registerSwap(clazz,
+          schemaSwap.originalType(),
           schemaSwap.fieldName(),
-          extractClassRef(schemaSwap.targetType()), schemaSwap.depth());
-
-    } else if (annotation instanceof AnnotationRef
-        && ((AnnotationRef) annotation).getClassRef().getFullyQualifiedName().equals(ANNOTATION_SCHEMA_SWAP)) {
-      Map<String, Object> params = ((AnnotationRef) annotation).getParameters();
-      schemaSwaps.registerSwap(definitionType,
-          extractClassRef(params.get("originalType")),
-          (String) params.get("fieldName"),
-          extractClassRef(params.getOrDefault("targetType", void.class)), (Integer) params.getOrDefault("depth", 0));
-
-    } else {
-      throw new IllegalArgumentException("Unmanaged annotation type passed to the SchemaSwaps: " + annotation);
+          schemaSwap.targetType(), schemaSwap.depth());
     }
   }
 
-  private static Stream<KubernetesValidationRule> extractKubernetesValidationRules(AnnotationRef annotationRef) {
-    switch (annotationRef.getClassRef().getFullyQualifiedName()) {
-      case ANNOTATION_VALIDATION_RULE:
-        return Stream.of(KubernetesValidationRule.from(annotationRef));
-      case ANNOTATION_VALIDATION_RULES:
-        return Arrays.stream(((ValidationRule[]) annotationRef.getParameters().get(VALUE)))
-            .map(KubernetesValidationRule::from);
-      default:
-        return Stream.empty();
+
+  static void collectValidationRules(Supplier<ValidationRule> single, Supplier<ValidationRules> multiple, List<KubernetesValidationRule> validationRules) {
+    ofNullable(single.get()).map(KubernetesValidationRule::from).ifPresent(validationRules::add);
+    ofNullable(multiple.get())
+        .ifPresent(ann -> Stream.of(ann.value()).map(KubernetesValidationRule::from).forEach(validationRules::add));
+  }
+
+  class PropertyMetadata {
+
+    private boolean required;
+    private String description;
+    private String defaultValue;
+    private Double min;
+    private Double max;
+    private String pattern;
+    private boolean nullable;
+    private String format;
+    private List<KubernetesValidationRule> validationRules = new ArrayList<>();
+    private boolean preserveUnknownFields;
+    private Class<?> schemaFrom;
+
+    public PropertyMetadata(JsonSchema value, BeanProperty beanProperty) {
+      required = Boolean.TRUE.equals(value.getRequired());
+
+      description = beanProperty.getMetadata().getDescription();
+      defaultValue = beanProperty.getMetadata().getDefaultValue();
+
+      schemaFrom = ofNullable(beanProperty.getAnnotation(SchemaFrom.class)).map(SchemaFrom::type).orElse(null);
+
+      if (value.isValueTypeSchema()) {
+        ValueTypeSchema valueTypeSchema = value.asValueTypeSchema();
+        this.format = ofNullable(valueTypeSchema.getFormat()).map(Object::toString).orElse(null);
+      }
+
+      if (value.isStringSchema()) {
+        StringSchema stringSchema = value.asStringSchema();
+        // only set if ValidationSchemaFactoryWrapper is used
+        this.pattern = stringSchema.getPattern(); // looks for the Pattern annotation
+        this.max = ofNullable(stringSchema.getMaxLength()).map(Integer::doubleValue).orElse(null);
+        this.min = ofNullable(stringSchema.getMinLength()).map(Integer::doubleValue).orElse(null);
+      } else {
+        // TODO: process the other schema types for validation values
+      }
+
+      collectValidationRules(() -> beanProperty.getAnnotation(ValidationRule.class), () -> beanProperty.getAnnotation(ValidationRules.class), validationRules);
+
+      // TODO: should probably move to a standard annotations
+      // see ValidationSchemaFactoryWrapper
+      nullable = beanProperty.getAnnotation(Nullable.class) != null;
+      max = ofNullable(beanProperty.getAnnotation(Max.class)).map(Max::value).orElse(max);
+      min = ofNullable(beanProperty.getAnnotation(Min.class)).map(Min::value).orElse(min);
+
+      // TODO: should the following be deprecated?
+      required = beanProperty.getAnnotation(Required.class) != null;
+      defaultValue = ofNullable(beanProperty.getAnnotation(Default.class)).map(Default::value).orElse(defaultValue);
+      pattern = ofNullable(beanProperty.getAnnotation(Pattern.class)).map(Pattern::value).orElse(pattern);
+      preserveUnknownFields = beanProperty.getAnnotation(PreserveUnknownFields.class) != null;
+    }
+
+    public T updateSchema(T schema) {
+      if (description != null) {
+        schema = addDescription(schema, description);
+      }
+
+      if (defaultValue != null) {
+        try {
+          setDefault(schema, YAML_MAPPER.readTree(defaultValue));
+        } catch (JsonProcessingException e) {
+          throw new IllegalArgumentException("Cannot parse default value: '" + defaultValue + "' as valid YAML.");
+        }
+      }
+      if (nullable) {
+        setNullable(schema, nullable);
+      }
+      setMax(schema, max);
+      setMin(schema, min);
+      setPattern(schema, pattern);
+      setFormat(schema, format);
+      if (preserveUnknownFields) {
+        setPreserveUnknown(schema, true);
+      }
+
+      if (!validationRules.isEmpty()) {
+        List<V> validationRulesFromProperty = validationRules.stream()
+            .map(AbstractJsonSchema.this::mapValidationRule)
+            .collect(Collectors.toList());
+
+        schema = addToValidationRules(schema, validationRulesFromProperty);
+      }
+      return schema;
     }
   }
 
-  private T internalFromImpl(TypeDef definition, LinkedHashMap<String, String> visited, InternalSchemaSwaps schemaSwaps,
+  private T internalFromImpl(LinkedHashMap<String, String> visited, InternalSchemaSwaps schemaSwaps, JsonSchema jacksonSchema,
       String... ignore) {
-    Set<String> ignores = ignore.length > 0 ? new LinkedHashSet<>(Arrays.asList(ignore))
-        : Collections
-            .emptySet();
-    List<String> required = new ArrayList<>();
+    Set<String> ignores = ignore.length > 0 ? new LinkedHashSet<>(Arrays.asList(ignore)) : Collections.emptySet();
 
-    final boolean isJsonNode = (definition.getFullyQualifiedName() != null &&
-        (definition.getFullyQualifiedName().equals(JSON_NODE_TYPE)
-            || definition.getFullyQualifiedName().equals(ANY_TYPE)));
-
-    final B builder = (isJsonNode) ? newBuilder(null) : newBuilder();
-
-    boolean preserveUnknownFields = isJsonNode;
+    final B builder = newBuilder();
 
     schemaSwaps = schemaSwaps.branchAnnotations();
     final InternalSchemaSwaps swaps = schemaSwaps;
-    definition.getAnnotations().forEach(annotation -> extractSchemaSwaps(definition.toReference(), annotation, swaps));
 
-    // index potential accessors by name for faster lookup
-    final Map<String, Method> accessors = indexPotentialAccessors(definition);
+    GeneratorObjectSchema gos = (GeneratorObjectSchema)jacksonSchema.asObjectSchema();
+    AnnotationIntrospector ai = SERIALIZATION_CONFIG.getAnnotationIntrospector();
+    BeanDescription bd = SERIALIZATION_CONFIG.introspect(gos.javaType);
+    boolean preserveUnknownFields = bd.findAnyGetter() != null || bd.findAnySetterAccessor() != null;
 
-    for (Property property : definition.getProperties()) {
-      if (isJsonNode) {
-        break;
-      }
-      String name = property.getName();
-      if (property.isStatic() || ignores.contains(name)) {
-        LOGGER.debug("Ignoring property {}", name);
+    // TODO: should these walk up the class hierarchy
+    extractSchemaSwaps(gos.javaType.getRawClass(), swaps);
+
+    List<String> required = new ArrayList<>();
+
+    for (Map.Entry<String, JsonSchema> property : gos.getProperties().entrySet()) {
+      String name = property.getKey();
+      if (ignores.contains(name)) {
         continue;
       }
-
       schemaSwaps = schemaSwaps.branchDepths();
-      SwapResult swapResult = schemaSwaps.lookupAndMark(definition.toReference(), name);
+      SwapResult swapResult = schemaSwaps.lookupAndMark(gos.javaType.getRawClass(), name);
       LinkedHashMap<String, String> savedVisited = visited;
       if (swapResult.onGoing) {
         visited = new LinkedHashMap<>();
       }
-      final PropertyFacade facade = new PropertyFacade(property, accessors, swapResult.classRef);
-      final Property possiblyRenamedProperty = facade.process();
-      name = possiblyRenamedProperty.getName();
 
-      if (facade.required) {
+      BeanProperty beanProperty = gos.beanProperties.get(property.getKey());
+      Utils.checkNotNull(beanProperty, "CRD generation works only with bean properties");
+
+      JsonSchema propertySchema = property.getValue();
+      PropertyMetadata propertyMetadata = new PropertyMetadata(propertySchema, beanProperty);
+
+      // fallback to the JsonFormat pattern
+      if (propertyMetadata.pattern == null) {
+        propertyMetadata.pattern = ofNullable(ai.findFormat(beanProperty.getMember())).map(Value::getPattern).orElse(null);
+      }
+
+      if (propertyMetadata.required) {
         required.add(name);
-      } else if (facade.ignored) {
-        continue;
       }
-      final T schema = internalFromImpl(name, possiblyRenamedProperty.getTypeRef(), visited, schemaSwaps);
+
+      JavaType type = beanProperty.getType();
+      if (swapResult.classRef != null) {
+        propertyMetadata.schemaFrom = swapResult.classRef;
+      }
+      if (propertyMetadata.schemaFrom != null) {
+        if (propertyMetadata.schemaFrom == void.class) {
+          // fully omit - this is a little inconsistent with the NullSchema handling
+          continue;
+        }
+        propertySchema = toJsonSchema(propertyMetadata.schemaFrom);
+        type = SERIALIZATION_CONFIG.constructType(propertyMetadata.schemaFrom);
+      }
+
+      T schema = getPropertySchema(visited, schemaSwaps, name, type, propertySchema);
+
+      schema = propertyMetadata.updateSchema(schema);
+
       visited = savedVisited;
-      if (facade.preserveUnknownFields) {
-        preserveUnknownFields = true;
-      }
 
-      // if we got a description from the field or an accessor, use it
-      final String description = facade.description;
-      final T possiblyUpdatedSchema;
-      if (description == null) {
-        possiblyUpdatedSchema = schema;
-      } else {
-        possiblyUpdatedSchema = addDescription(schema, description);
-      }
-
-      SchemaPropsOptions options = new SchemaPropsOptions(
-          facade.defaultValue,
-          facade.min,
-          facade.max,
-          facade.pattern,
-          facade.validationRules,
-          facade.nullable,
-          facade.required,
-          facade.preserveUnknownFields);
-
-      addProperty(possiblyRenamedProperty, builder, possiblyUpdatedSchema, options);
+      addProperty(name, builder, schema);
     }
 
-    List<KubernetesValidationRule> validationRules = Stream
-        .concat(definition.getAnnotations().stream(), definition.getExtendsList().stream()
-            .flatMap(classRef -> GetDefinition.of(classRef).getAnnotations().stream()))
-        .flatMap(AbstractJsonSchema::extractKubernetesValidationRules)
-        .filter(Objects::nonNull)
-        .collect(Collectors.toList());
+    // TODO: should these walk up the class hierarchy
+    List<KubernetesValidationRule> validationRules = new ArrayList<>();
+    Annotations anns = bd.getClassAnnotations();
+    collectValidationRules(() -> anns.get(ValidationRule.class), () -> anns.get(ValidationRules.class), validationRules);
 
     swaps.throwIfUnmatchedSwaps();
     return build(builder, required, validationRules, preserveUnknownFields);
   }
 
-  private Map<String, Method> indexPotentialAccessors(TypeDef definition) {
-    final List<Method> methods = definition.getMethods();
-    final Map<String, Method> accessors = new HashMap<>(methods.size());
-    methods.stream()
-        .filter(this::isPotentialAccessor)
-        .forEach(m -> accessors.put(m.getName(), m));
-    return accessors;
+  private T getPropertySchema(LinkedHashMap<String, String> visited, InternalSchemaSwaps schemaSwaps, String name,
+      JavaType type, JsonSchema jacksonSchema) {
+
+    if (type.getRawClass() == IntOrString.class || type.getRawClass() == Quantity.class) {
+      return intOrString();
+    }
+
+    if (jacksonSchema.isArraySchema()) {
+      Items items = jacksonSchema.asArraySchema().getItems();
+      if (items.isArrayItems()) {
+        throw new IllegalStateException("not yet supported");
+      }
+      JsonSchema arraySchema = jacksonSchema.asArraySchema().getItems().asSingleItems().getSchema();
+      final T schema = getPropertySchema(visited, schemaSwaps, name, type.getContentType(), arraySchema);
+      return arrayLikeProperty(schema);
+    } else if (jacksonSchema.isIntegerSchema()) {
+      return singleProperty("integer");
+    } else if (jacksonSchema.isNumberSchema()) {
+      return singleProperty("number");
+    } else if (jacksonSchema.isBooleanSchema()) {
+      return singleProperty("boolean");
+    } else if (jacksonSchema.isStringSchema()) {
+      // currently on string enums are supported
+      StringSchema stringSchema = jacksonSchema.asStringSchema();
+      if (!stringSchema.getEnums().isEmpty()) {
+        Set<String> ignores = type.isEnumType() ? findIngoredEnumConstants(type) : Collections.emptySet();
+        final JsonNode[] enumValues = stringSchema.getEnums().stream()
+            .sorted()
+            .filter(s -> !ignores.contains(s))
+            .map(JsonNodeFactory.instance::textNode)
+            .toArray(JsonNode[]::new);
+        return enumProperty(enumValues);
+      }
+      return singleProperty("string");
+    } else if (jacksonSchema.isNullSchema()) {
+      return singleProperty("object");
+    } else if (jacksonSchema.isAnySchema()) {
+      // TODO: this could optionally take a type restriction
+      T schema = singleProperty(null);
+      setPreserveUnknown(schema, true);
+      return schema;
+    } else if (jacksonSchema.isUnionTypeSchema()) {
+      throw new IllegalStateException("not yet supported");
+    } else if (jacksonSchema instanceof ReferenceSchema) {
+      // de-reference the reference schema - these can be naturally non-cyclic, for example siblings
+      ReferenceSchema ref = (ReferenceSchema)jacksonSchema;
+      GeneratorObjectSchema referenced = SEEN.get(ref.get$ref());
+      Utils.checkNotNull(referenced, "Could not find previously generated schema");
+      jacksonSchema = referenced;
+    }
+
+    if (type.isMapLikeType()) {
+      final JavaType keyType = type.getKeyType();
+
+      if (keyType.getRawClass() != String.class) {
+        LOGGER.warn("Property '{}' with '{}' key type is mapped to 'string' because of CRD schemas limitations", name, keyType);
+      }
+
+      final JavaType valueType = type.getContentType();
+      JsonSchema mapValueSchema = ((SchemaAdditionalProperties)((ObjectSchema)jacksonSchema).getAdditionalProperties()).getJsonSchema();
+      T component = getPropertySchema(visited, schemaSwaps, name, valueType, mapValueSchema);
+      return mapLikeProperty(component);
+    }
+
+    Class<?> def = type.getRawClass();
+    if (visited.put(def.getName(), name) != null) {
+      throw new IllegalArgumentException(
+          "Found a cyclic reference involving the field of type " + def.getName() + " starting a field "
+              + visited.entrySet().stream().map(e -> e.getValue() + " >>\n" + e.getKey()).collect(Collectors.joining(".")) + "."
+              + name);
+    }
+
+    T res = internalFromImpl(visited, schemaSwaps, jacksonSchema);
+    visited.remove(def.getName());
+    return res;
   }
 
-  private static class PropertyOrAccessor {
-    private final Collection<AnnotationRef> annotations;
-    private final String name;
-    private final String propertyName;
-    private final String type;
-    private String renamedTo;
-    private String defaultValue;
-    private Double min;
-    private Double max;
-    private String pattern;
-    private List<KubernetesValidationRule> validationRules;
-    private boolean nullable;
-    private boolean required;
-    private boolean ignored;
-    private boolean preserveUnknownFields;
-    private String description;
-    private TypeRef schemaFrom;
-
-    private PropertyOrAccessor(Collection<AnnotationRef> annotations, String name, String propertyName, boolean isMethod) {
-      this.annotations = annotations;
-      this.name = name;
-      this.propertyName = propertyName;
-      type = isMethod ? "accessor" : "field";
-    }
-
-    static PropertyOrAccessor fromProperty(Property property) {
-      return new PropertyOrAccessor(property.getAnnotations(), property.getName(), property.getName(), false);
-    }
-
-    static PropertyOrAccessor fromMethod(Method method, String propertyName) {
-      return new PropertyOrAccessor(method.getAnnotations(), method.getName(), propertyName, true);
-    }
-
-    public void process() {
-      annotations.forEach(a -> {
-        switch (a.getClassRef().getFullyQualifiedName()) {
-          case ANNOTATION_DEFAULT:
-            defaultValue = (String) a.getParameters().get(VALUE);
-            break;
-          case ANNOTATION_NULLABLE:
-            nullable = true;
-            break;
-          case ANNOTATION_MAX:
-            max = (Double) a.getParameters().get(VALUE);
-            break;
-          case ANNOTATION_MIN:
-            min = (Double) a.getParameters().get(VALUE);
-            break;
-          case ANNOTATION_PATTERN:
-            pattern = (String) a.getParameters().get(VALUE);
-            break;
-          case ANNOTATION_REQUIRED:
-            required = true;
-            break;
-          case ANNOTATION_JSON_PROPERTY:
-            final String nameFromAnnotation = (String) a.getParameters().get(VALUE);
-            if (!Strings.isNullOrEmpty(nameFromAnnotation) && !propertyName.equals(nameFromAnnotation)) {
-              renamedTo = nameFromAnnotation;
-            }
-            break;
-          case ANNOTATION_JSON_PROPERTY_DESCRIPTION:
-            final String descriptionFromAnnotation = (String) a.getParameters().get(VALUE);
-            if (!Strings.isNullOrEmpty(descriptionFromAnnotation)) {
-              description = descriptionFromAnnotation;
-            }
-            break;
-          case ANNOTATION_JSON_IGNORE:
-            ignored = true;
-            break;
-          case ANNOTATION_JSON_ANY_GETTER:
-          case ANNOTATION_JSON_ANY_SETTER:
-          case ANNOTATION_PERSERVE_UNKNOWN_FIELDS:
-            preserveUnknownFields = true;
-            break;
-          case ANNOTATION_SCHEMA_FROM:
-            schemaFrom = extractClassRef(a.getParameters().get("type"));
-            break;
-          case ANNOTATION_VALIDATION_RULE:
-          case ANNOTATION_VALIDATION_RULES:
-            validationRules = extractKubernetesValidationRules(a).collect(Collectors.toList());
-            break;
+  /**
+   * we've added support for ignoring an enum values, which complicates this processing
+   * as that is something not supported directly by jackson
+   */
+  private Set<String> findIngoredEnumConstants(JavaType type) {
+    Field[] fields = type.getRawClass().getFields();
+    Set<String> toIgnore = new HashSet<>();
+    for (Field field : fields) {
+      if (field.isEnumConstant() && field.getAnnotation(JsonIgnore.class) != null) {
+        // hack to figure out the enum constant
+        try {
+          Object value = field.get(null);
+          toIgnore.add(KUBERNETES_SERIALIZATION.unmarshal(KUBERNETES_SERIALIZATION.asJson(value), String.class));
+        } catch (IllegalArgumentException | IllegalAccessException e) {
         }
-      });
-    }
-
-    public String getRenamedTo() {
-      return renamedTo;
-    }
-
-    public boolean isNullable() {
-      return nullable;
-    }
-
-    public Optional<String> getDefault() {
-      return Optional.ofNullable(defaultValue);
-    }
-
-    public Optional<Double> getMax() {
-      return Optional.ofNullable(max);
-    }
-
-    public Optional<Double> getMin() {
-      return Optional.ofNullable(min);
-    }
-
-    public Optional<String> getPattern() {
-      return Optional.ofNullable(pattern);
-    }
-
-    public Optional<List<KubernetesValidationRule>> getValidationRules() {
-      return Optional.ofNullable(validationRules);
-    }
-
-    public boolean isRequired() {
-      return required;
-    }
-
-    public boolean isIgnored() {
-      return ignored;
-    }
-
-    public boolean isPreserveUnknownFields() {
-      return preserveUnknownFields;
-    }
-
-    public String getDescription() {
-      return description;
-    }
-
-    public boolean contributeName() {
-      return renamedTo != null;
-    }
-
-    public boolean contributeDescription() {
-      return description != null;
-    }
-
-    public TypeRef getSchemaFrom() {
-      return schemaFrom;
-    }
-
-    public boolean contributeSchemaFrom() {
-      return schemaFrom != null;
-    }
-
-    @Override
-    public String toString() {
-      return "'" + name + "' " + type;
-    }
-  }
-
-  private static class PropertyFacade {
-    private final List<PropertyOrAccessor> propertyOrAccessors = new ArrayList<>(4);
-    private String renamedTo;
-    private String description;
-    private String defaultValue;
-    private Double min;
-    private Double max;
-    private String pattern;
-    private boolean nullable;
-    private boolean required;
-    private boolean ignored;
-    private boolean preserveUnknownFields;
-    private final Property original;
-    private String nameContributedBy;
-    private String descriptionContributedBy;
-    private TypeRef schemaFrom;
-    private List<KubernetesValidationRule> validationRules;
-
-    public PropertyFacade(Property property, Map<String, Method> potentialAccessors, ClassRef schemaSwap) {
-      original = property;
-      final String capitalized = property.getNameCapitalized();
-      final String name = property.getName();
-      propertyOrAccessors.add(PropertyOrAccessor.fromProperty(property));
-      Method method = potentialAccessors.get("is" + capitalized);
-      if (method != null) {
-        propertyOrAccessors.add(PropertyOrAccessor.fromMethod(method, name));
       }
-      method = potentialAccessors.get("get" + capitalized);
-      if (method != null) {
-        propertyOrAccessors.add(PropertyOrAccessor.fromMethod(method, name));
-      }
-      method = potentialAccessors.get("set" + capitalized);
-      if (method != null) {
-        propertyOrAccessors.add(PropertyOrAccessor.fromMethod(method, name));
-      }
-      schemaFrom = schemaSwap;
-      defaultValue = null;
-      min = null;
-      max = null;
-      pattern = null;
-      validationRules = new LinkedList<>();
     }
-
-    public Property process() {
-      final String name = original.getName();
-
-      propertyOrAccessors.forEach(p -> {
-        p.process();
-        final String contributorName = p.toString();
-        if (p.contributeName()) {
-          if (renamedTo == null) {
-            renamedTo = p.getRenamedTo();
-            this.nameContributedBy = contributorName;
-          } else {
-            LOGGER.debug("Property {} has already been renamed to {} by {}", name, renamedTo, nameContributedBy);
-          }
-        }
-
-        if (p.contributeDescription()) {
-          if (description == null) {
-            description = p.getDescription();
-            descriptionContributedBy = contributorName;
-          } else {
-            LOGGER.debug("Description for property {} has already been contributed by: {}", name, descriptionContributedBy);
-          }
-        }
-        defaultValue = p.getDefault().orElse(defaultValue);
-        min = p.getMin().orElse(min);
-        max = p.getMax().orElse(max);
-        pattern = p.getPattern().orElse(pattern);
-        p.getValidationRules().ifPresent(rules -> validationRules.addAll(rules));
-
-        if (p.isNullable()) {
-          nullable = true;
-        }
-
-        if (p.isRequired()) {
-          required = true;
-        } else if (p.isIgnored()) {
-          ignored = true;
-        }
-
-        preserveUnknownFields = p.isPreserveUnknownFields() || preserveUnknownFields;
-
-        if (p.contributeSchemaFrom()) {
-          schemaFrom = p.getSchemaFrom();
-        }
-      });
-
-      TypeRef typeRef = schemaFrom != null ? schemaFrom : original.getTypeRef();
-      String finalName = renamedTo != null ? renamedTo : original.getName();
-
-      return new Property(original.getAnnotations(), typeRef, finalName,
-          original.getComments(), false, false, original.getModifiers(), original.getAttributes());
-    }
+    return toIgnore;
   }
 
   /**
@@ -685,17 +500,6 @@ public abstract class AbstractJsonSchema<T, B> {
       return rule;
     }
 
-    static KubernetesValidationRule from(AnnotationRef annotationRef) {
-      KubernetesValidationRule result = new KubernetesValidationRule();
-      result.rule = (String) annotationRef.getParameters().get(VALUE);
-      result.reason = mapNotEmpty((String) annotationRef.getParameters().get("reason"));
-      result.message = mapNotEmpty((String) annotationRef.getParameters().get("message"));
-      result.messageExpression = mapNotEmpty((String) annotationRef.getParameters().get("messageExpression"));
-      result.fieldPath = mapNotEmpty((String) annotationRef.getParameters().get("fieldPath"));
-      result.optionalOldSelf = Boolean.TRUE.equals(annotationRef.getParameters().get("optionalOldSelf")) ? Boolean.TRUE : null;
-      return result;
-    }
-
     static KubernetesValidationRule from(ValidationRule validationRule) {
       KubernetesValidationRule result = new KubernetesValidationRule();
       result.rule = validationRule.value();
@@ -716,65 +520,21 @@ public abstract class AbstractJsonSchema<T, B> {
     }
   }
 
-  private boolean isPotentialAccessor(Method method) {
-    final String name = method.getName();
-    return name.startsWith("is") || name.startsWith("get") || name.startsWith("set");
-  }
-
-  /**
-   * Retrieves the updated property name for the specified property if its annotations warrant it
-   *
-   * @param property the Property which name might need to be updated
-   * @return the updated property name or its original one if it didn't need to be changed
-   */
-  private String extractUpdatedNameFromJacksonPropertyIfPresent(Property property) {
-    final String name = property.getName();
-    final boolean ignored = property.getAnnotations().stream()
-        .anyMatch(a -> a.getClassRef().getFullyQualifiedName().equals(ANNOTATION_JSON_IGNORE));
-
-    if (ignored) {
-      return null;
-    } else {
-      return property.getAnnotations().stream()
-          // only consider JsonProperty annotation
-          .filter(a -> a.getClassRef().getFullyQualifiedName().equals(ANNOTATION_JSON_PROPERTY))
-          .findAny()
-          // if we found an annotated accessor, override the property's name if needed
-          .map(a -> {
-            final String fromAnnotation = (String) a.getParameters().get(VALUE);
-            if (!Strings.isNullOrEmpty(fromAnnotation) && !name.equals(fromAnnotation)) {
-              return fromAnnotation;
-            } else {
-              return name;
-            }
-          }).orElse(property.getName());
-    }
-  }
-
   /**
    * Creates a new specific builder object.
    *
    * @return a new builder object specific to the CRD generation version
    */
-  public abstract B newBuilder();
+  protected abstract B newBuilder();
 
   /**
-   * Creates a new specific builder object.
+   * Adds the specified property to the specified builder
    *
-   * @param type the type to be used
-   * @return a new builder object specific to the CRD generation version
-   */
-  public abstract B newBuilder(String type);
-
-  /**
-   * Adds the specified property to the specified builder, calling {@link #internalFrom(String, TypeRef)}
-   * to create the property schema.
-   *
-   * @param property the property to add to the currently being built schema
+   * @param name the property to add to the currently being built schema
    * @param builder the builder representing the schema being built
    * @param schema the built schema for the property being added
    */
-  public abstract void addProperty(Property property, B builder, T schema, SchemaPropsOptions options);
+  protected abstract void addProperty(String name, B builder, T schema);
 
   /**
    * Finishes up the process by actually building the final JSON schema based on the provided
@@ -791,149 +551,20 @@ public abstract class AbstractJsonSchema<T, B> {
       List<KubernetesValidationRule> validationRules,
       boolean preserveUnknownFields);
 
-  /**
-   * Builds the specific JSON schema representing the structural schema for the specified property
-   *
-   * @param name the name of the property which schema we want to build
-   * @param typeRef the type of the property which schema we want to build
-   * @return the structural schema associated with the specified property
-   */
-  public T internalFrom(String name, TypeRef typeRef) {
-    return internalFromImpl(name, typeRef, new LinkedHashMap<>(), new InternalSchemaSwaps());
-  }
-
-  private T internalFromImpl(String name, TypeRef typeRef, LinkedHashMap<String, String> visited,
-      InternalSchemaSwaps schemaSwaps) {
-    // Note that ordering of the checks here is meaningful: we need to check for complex types last
-    // in case some "complex" types are handled specifically
-    if (typeRef.getDimensions() > 0 || io.sundr.model.utils.Collections.isCollection(typeRef)) { // Handle Collections & Arrays
-      //noinspection unchecked
-      final TypeRef collectionType = TypeAs.combine(TypeAs.UNWRAP_ARRAY_OF, TypeAs.UNWRAP_COLLECTION_OF)
-          .apply(typeRef);
-      final T schema = internalFromImpl(name, collectionType, visited, schemaSwaps);
-      return arrayLikeProperty(schema);
-    } else if (io.sundr.model.utils.Collections.IS_MAP.apply(typeRef)) { // Handle Maps
-      final TypeRef keyType = TypeAs.UNWRAP_MAP_KEY_OF.apply(typeRef);
-
-      if (!(keyType instanceof ClassRef && ((ClassRef) keyType).getFullyQualifiedName().equals("java.lang.String"))) {
-        LOGGER.warn("Property '{}' with '{}' key type is mapped to 'string' because of CRD schemas limitations", name, typeRef);
-      }
-
-      final TypeRef valueType = TypeAs.UNWRAP_MAP_VALUE_OF.apply(typeRef);
-      T schema = internalFromImpl(name, valueType, visited, schemaSwaps);
-      if (schema == null) {
-        LOGGER.warn(
-            "Property '{}' with '{}' value type is mapped to 'object' because its CRD representation cannot be extracted.",
-            name, typeRef);
-        schema = internalFromImpl(name, OBJECT_REF, visited, schemaSwaps);
-      }
-
-      return mapLikeProperty(schema);
-    } else if (io.sundr.model.utils.Optionals.isOptional(typeRef)) { // Handle Optionals
-      return internalFromImpl(name, TypeAs.UNWRAP_OPTIONAL_OF.apply(typeRef), visited, schemaSwaps);
-    } else {
-      final String typeName = COMMON_MAPPINGS.get(typeRef);
-      if (typeName != null) { // we have a type that we handle specifically
-        if (INT_OR_STRING_MARKER.equals(typeName)) { // Handle int or string mapped types
-          return mappedProperty(typeRef);
-        } else {
-          return singleProperty(typeName); // Handle Standard Types
-        }
-      } else {
-        if (typeRef instanceof ClassRef) { // Handle complex types
-          ClassRef classRef = (ClassRef) typeRef;
-          TypeDef def = Types.typeDefFrom(classRef);
-
-          // check if we're dealing with an enum
-          if (def.isEnum()) {
-            final JsonNode[] enumValues = def.getProperties().stream()
-                .filter(Property::isEnumConstant)
-                .map(this::extractUpdatedNameFromJacksonPropertyIfPresent)
-                .filter(Objects::nonNull)
-                .sorted()
-                .map(JsonNodeFactory.instance::textNode)
-                .toArray(JsonNode[]::new);
-            return enumProperty(enumValues);
-          } else if (!classRef.getFullyQualifiedName().equals(VOID.getName())) {
-            return resolveNestedClass(name, def, visited, schemaSwaps);
-          }
-
-        }
-        return null;
-      }
-    }
-  }
-
-  private T resolveNestedClass(String name, TypeDef def, LinkedHashMap<String, String> visited,
-      InternalSchemaSwaps schemaSwaps) {
-    String fullyQualifiedName = def.getFullyQualifiedName();
-    T res = resolveJavaClass(fullyQualifiedName);
-    if (res != null) {
-      return res;
-    }
-    if (visited.put(fullyQualifiedName, name) != null) {
-      throw new IllegalArgumentException(
-          "Found a cyclic reference involving the field of type " + fullyQualifiedName + " starting a field "
-              + visited.entrySet().stream().map(e -> e.getValue() + " >>\n" + e.getKey()).collect(Collectors.joining(".")) + "."
-              + name);
-    }
-
-    res = internalFromImpl(def, visited, schemaSwaps);
-    visited.remove(fullyQualifiedName);
-    return res;
-  }
-
-  private T resolveJavaClass(String fullyQualifiedName) {
-    if ((!fullyQualifiedName.startsWith("java.") && !fullyQualifiedName.startsWith("javax."))
-        || COMPLEX_JAVA_TYPES.contains(fullyQualifiedName)) {
-      return null;
-    }
-    String mapping = null;
-    boolean array = false;
+  private JsonSchema toJsonSchema(Class<?> clazz) {
     try {
-      Class<?> clazz = Class.forName(fullyQualifiedName);
-      JsonSchema schema = GENERATOR.generateSchema(clazz);
-      if (schema.isArraySchema()) {
-        Items items = schema.asArraySchema().getItems();
-        if (items.isSingleItems()) {
-          array = true;
-          schema = items.asSingleItems().getSchema();
-        }
-      }
-      if (schema.isIntegerSchema()) {
-        mapping = INTEGER_MARKER;
-      } else if (schema.isNumberSchema()) {
-        mapping = NUMBER_MARKER;
-      } else if (schema.isBooleanSchema()) {
-        mapping = BOOLEAN_MARKER;
-      } else if (schema.isStringSchema()) {
-        mapping = STRING_MARKER;
-      }
-    } catch (Exception e) {
-      LOGGER.debug(
-          "Something went wrong with detecting java type schema for {}, will use full introspection instead",
-          fullyQualifiedName, e);
+      return GENERATOR.generateSchema(clazz);
+    } catch (JsonMappingException e) {
+      throw new RuntimeException(e);
     }
-    // cache the result for subsequent calls
-    if (mapping != null) {
-      if (array) {
-        return arrayLikeProperty(singleProperty(mapping));
-      }
-      COMMON_MAPPINGS.put(TypeDef.forName(fullyQualifiedName).toReference(), mapping);
-      return singleProperty(mapping);
-    }
-
-    COMPLEX_JAVA_TYPES.add(fullyQualifiedName);
-    return null;
   }
 
   /**
-   * Builds the schema for specifically handled property types (e.g. intOrString properties)
+   * Builds the schema for specifically for intOrString properties
    *
-   * @param ref the type of the specifically handled property
    * @return the property schema
    */
-  protected abstract T mappedProperty(TypeRef ref);
+  protected abstract T intOrString();
 
   /**
    * Builds the schema for array-like properties
@@ -962,4 +593,23 @@ public abstract class AbstractJsonSchema<T, B> {
   protected abstract T enumProperty(JsonNode... enumValues);
 
   protected abstract T addDescription(T schema, String description);
+
+  protected abstract V mapValidationRule(KubernetesValidationRule validationRule);
+
+  protected abstract void setDefault(T schema, JsonNode node);
+
+  protected abstract void setMin(T schema, Double min);
+
+  protected abstract void setMax(T schema, Double max);
+
+  protected abstract void setFormat(T schema, String format);
+
+  protected abstract void setPattern(T schema, String pattern);
+
+  protected abstract void setNullable(T schema, Boolean nullable);
+
+  protected abstract void setPreserveUnknown(T schema, Boolean preserveUnknown);
+
+  protected abstract T addToValidationRules(T schema, List<V> validationRules);
+
 }

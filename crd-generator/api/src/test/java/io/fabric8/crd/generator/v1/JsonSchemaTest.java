@@ -549,6 +549,23 @@ class JsonSchemaTest {
         exception.getMessage());
   }
 
+  @io.fabric8.generator.annotation.ValidationRule(value = "base", messageExpression = "something", reason = "FieldValueForbidden")
+  private static class Base {
+    public String value;
+  }
+
+  @io.fabric8.generator.annotation.ValidationRule(value = "parent", messageExpression = "something else", reason = "FieldValueForbidden")
+  private static class Parent extends Base {
+
+  }
+
+  @Test
+  void testValidationRuleHierarchy() {
+    JSONSchemaProps schema = JsonSchema.from(Parent.class);
+    assertNotNull(schema);
+    assertEquals(2, schema.getXKubernetesValidations().size());
+  }
+
   private static Map<String, JSONSchemaProps> assertSchemaHasNumberOfProperties(JSONSchemaProps specSchema, int expected) {
     Map<String, JSONSchemaProps> spec = specSchema.getProperties();
     assertEquals(expected, spec.size());

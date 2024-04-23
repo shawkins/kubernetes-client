@@ -15,7 +15,12 @@
  */
 package io.fabric8.crd.generator;
 
+import io.fabric8.crd.generator.AbstractJsonSchema.AnnotationMetadata;
+import io.fabric8.crd.generator.annotation.PrinterColumn;
 import io.fabric8.crd.generator.decorator.Decorator;
+import io.fabric8.kubernetes.client.utils.Utils;
+
+import java.util.Map;
 
 /**
  * This class encapsulates the common behavior between v1beta1 and v1 CRD generation logic. The
@@ -31,24 +36,23 @@ public abstract class AbstractCustomResourceHandler {
 
   public abstract void handle(CustomResourceInfo config);
 
-  /*Map<String, Property> additionalPrinterColumns = new HashMap<>(additionalPrinterColumnDetector.getProperties());
-  additionalPrinterColumns.forEach((path, property) -> {
-    Map<String, Object> parameters = property.getAnnotations().stream()
-        .filter(a -> a.getClassRef().getName().equals("PrinterColumn")).map(AnnotationRef::getParameters)
-        .findFirst().orElse(Collections.emptyMap());
-    String type = AbstractJsonSchema.getSchemaTypeFor(property.getTypeRef());
-    String column = (String) parameters.get("name");
-    if (Utils.isNullOrEmpty(column)) {
-      column = property.getName().toUpperCase();
-    }
-    String description = property.getComments().stream().filter(l -> !l.trim().startsWith("@"))
-        .collect(Collectors.joining(" ")).trim();
-    String format = (String) parameters.get("format");
-    int priority = (int) parameters.getOrDefault("priority", 0);
+  protected void handlePrinterColumns(String name, String version, Map<String, AnnotationMetadata> additionalPrinterColumns) {
+    additionalPrinterColumns.forEach((path, property) -> {
+      PrinterColumn printerColumn = ((PrinterColumn)property.annotation);
+      String column = printerColumn.name();
+      if (Utils.isNullOrEmpty(column)) {
+        column = path.substring(path.lastIndexOf("."));
+      }
+      String format = printerColumn.format();
+      int priority = printerColumn.priority();
 
-    resources.decorate(
-        getPrinterColumnDecorator(name, version, path, type, column, description, format, priority));
-  });*/
+      // TODO: add description to the annotation? The previous logic considered the comments, which are not available here
+      String description = property.description;
+
+      resources.decorate(
+          getPrinterColumnDecorator(name, version, path, property.type, column, description, format, priority));
+    });
+  }
 
   /**
    * Provides the decorator implementation associated with the CRD generation version.

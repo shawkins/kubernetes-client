@@ -19,6 +19,7 @@ import io.fabric8.crd.generator.AbstractCustomResourceHandler;
 import io.fabric8.crd.generator.CustomResourceInfo;
 import io.fabric8.crd.generator.ResolvingContext;
 import io.fabric8.crd.generator.Resources;
+import io.fabric8.crd.generator.annotation.PrinterColumn;
 import io.fabric8.crd.generator.decorator.Decorator;
 import io.fabric8.crd.generator.v1.decorator.AddAdditionPrinterColumnDecorator;
 import io.fabric8.crd.generator.v1.decorator.AddCustomResourceDefinitionResourceDecorator;
@@ -36,6 +37,9 @@ import io.fabric8.crd.generator.v1.decorator.SetStorageVersionDecorator;
 import io.fabric8.crd.generator.v1.decorator.SortCustomResourceDefinitionVersionDecorator;
 import io.fabric8.crd.generator.v1.decorator.SortPrinterColumnsDecorator;
 import io.fabric8.kubernetes.api.model.apiextensions.v1.JSONSchemaProps;
+import io.fabric8.kubernetes.model.annotation.LabelSelector;
+import io.fabric8.kubernetes.model.annotation.SpecReplicas;
+import io.fabric8.kubernetes.model.annotation.StatusReplicas;
 
 public class CustomResourceHandler extends AbstractCustomResourceHandler {
 
@@ -70,20 +74,22 @@ public class CustomResourceHandler extends AbstractCustomResourceHandler {
     resources.decorate(new AddSchemaToCustomResourceDefinitionVersionDecorator(name, version,
         schema));
 
-    resolver.getSpecReplicasPath().ifPresent(path -> {
+    resolver.getSinglePath(SpecReplicas.class).ifPresent(path -> {
       resources.decorate(new AddSubresourcesDecorator(name, version));
       resources.decorate(new AddSpecReplicasPathDecorator(name, version, path));
     });
 
-    resolver.getStatusReplicasPath().ifPresent(path -> {
+    resolver.getSinglePath(StatusReplicas.class).ifPresent(path -> {
       resources.decorate(new AddSubresourcesDecorator(name, version));
       resources.decorate(new AddStatusReplicasPathDecorator(name, version, path));
     });
 
-    resolver.getLabelSelectorPath().ifPresent(path -> {
+    resolver.getSinglePath(LabelSelector.class).ifPresent(path -> {
       resources.decorate(new AddSubresourcesDecorator(name, version));
       resources.decorate(new AddLabelSelectorPathDecorator(name, version, path));
     });
+
+    handlePrinterColumns(name, version, resolver.getAllPaths(PrinterColumn.class));
 
     if (config.statusClassName().isPresent()) {
       resources.decorate(new AddSubresourcesDecorator(name, version));

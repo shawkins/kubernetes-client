@@ -24,8 +24,8 @@ import com.fasterxml.jackson.databind.BeanProperty;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.introspect.AnnotatedMethod;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.util.Annotations;
 import com.fasterxml.jackson.module.jsonSchema.JsonSchema;
 import com.fasterxml.jackson.module.jsonSchema.types.ArraySchema.Items;
 import com.fasterxml.jackson.module.jsonSchema.types.ObjectSchema;
@@ -36,6 +36,7 @@ import com.fasterxml.jackson.module.jsonSchema.types.ValueTypeSchema;
 import io.fabric8.crd.generator.InternalSchemaSwaps.SwapResult;
 import io.fabric8.crd.generator.ResolvingContext.GeneratorObjectSchema;
 import io.fabric8.crd.generator.annotation.PreserveUnknownFields;
+import io.fabric8.crd.generator.annotation.PrinterColumn;
 import io.fabric8.crd.generator.annotation.SchemaFrom;
 import io.fabric8.crd.generator.annotation.SchemaSwap;
 import io.fabric8.generator.annotation.Default;
@@ -55,18 +56,23 @@ import io.fabric8.kubernetes.model.annotation.StatusReplicas;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Supplier;
+import java.util.TreeMap;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -85,13 +91,28 @@ public abstract class AbstractJsonSchema<T, B, V> {
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractJsonSchema.class);
 
   private ResolvingContext resolvingContext;
-  private String specReplicasPath;
-  private String statusReplicasPath;
-  private String labelSelectorPath;
   private T root;
+
+  public static class AnnotationMetadata {
+    public final Annotation annotation;
+    public final String description;
+    public final String type;
+
+    public AnnotationMetadata(Annotation annotation, String description, String type) {
+      this.annotation = annotation;
+      this.description = description;
+      this.type = type;
+    }
+  }
+
+  private Map<Class<? extends Annotation>, LinkedHashMap<String, AnnotationMetadata>> pathMetadata = new HashMap<>();
 
   public AbstractJsonSchema(ResolvingContext resolvingContext, Class<?> def) {
     this.resolvingContext = resolvingContext;
+    // TODO: could make this configurable, and could stop looking for single valued ones - or warn
+    Stream.of(SpecReplicas.class, StatusReplicas.class, LabelSelector.class, PrinterColumn.class)
+        .forEach(clazz -> pathMetadata.put(clazz, new LinkedHashMap<>()));
+
     this.root = resolveRoot(def);
   }
 
@@ -99,16 +120,12 @@ public abstract class AbstractJsonSchema<T, B, V> {
     return root;
   }
 
-  public Optional<String> getLabelSelectorPath() {
-    return ofNullable(labelSelectorPath);
+  public Optional<String> getSinglePath(Class<? extends Annotation> clazz) {
+    return ofNullable(pathMetadata.get(clazz)).flatMap(m -> m.keySet().stream().findFirst());
   }
 
-  public Optional<String> getSpecReplicasPath() {
-    return ofNullable(specReplicasPath);
-  }
-
-  public Optional<String> getStatusReplicasPath() {
-    return ofNullable(statusReplicasPath);
+  public Map<String, AnnotationMetadata> getAllPaths(Class<PrinterColumn> clazz) {
+    return ofNullable(pathMetadata.get(clazz)).orElse(new LinkedHashMap<>());
   }
 
   protected List<V> mapValidationRules(List<KubernetesValidationRule> validationRules) {
@@ -137,19 +154,46 @@ public abstract class AbstractJsonSchema<T, B, V> {
     return resolvePropertySchema(new LinkedHashMap<>(), schemaSwaps, null, resolvingContext.serializationConfig.constructType(definition), schema);
   }
 
-  private void extractSchemaSwaps(Class<?> clazz, InternalSchemaSwaps schemaSwaps) {
-    SchemaSwap[] swaps = clazz.getAnnotationsByType(SchemaSwap.class);
-    for (SchemaSwap schemaSwap : swaps) {
-      schemaSwaps.registerSwap(clazz,
-          schemaSwap.originalType(),
-          schemaSwap.fieldName(),
-          schemaSwap.targetType(), schemaSwap.depth());
+  private static <A extends Annotation> void extractAnnotations(Class<?> beanClass, Class<A> annotation, Consumer<A> consumer) {
+    while (beanClass != Object.class) {
+      Stream.of(beanClass.getAnnotationsByType(annotation)).forEach(consumer);
+      beanClass = beanClass.getSuperclass();
     }
   }
 
-  static void collectValidationRules(Supplier<ValidationRule> single, Supplier<ValidationRules> multiple, List<KubernetesValidationRule> validationRules) {
-    ofNullable(single.get()).map(KubernetesValidationRule::from).ifPresent(validationRules::add);
-    ofNullable(multiple.get())
+  static void collectValidationRules(BeanProperty beanProperty, List<KubernetesValidationRule> validationRules) {
+    // TODO: the old logic allowed for picking up the annotation from both the getter and the field
+    // this requires a messy hack by convention because there doesn't seem to be a way to all annotations
+    // nor does jackson provide the field
+    if (beanProperty.getMember() instanceof AnnotatedMethod) {
+      // field first
+      Method m = ((AnnotatedMethod)beanProperty.getMember()).getMember();
+      String name = m.getName();
+      if (name.startsWith("get") || name.startsWith("set")) {
+        name = name.substring(3);
+      } else if (name.startsWith("is")) {
+        name = name.substring(2);
+      }
+      if (name.length() > 0) {
+        name = Character.toLowerCase(name.charAt(0)) + name.substring(1);
+      }
+      try {
+        Field f = beanProperty.getMember().getDeclaringClass().getDeclaredField(name);
+        ofNullable(f.getAnnotation(ValidationRule.class)).map(KubernetesValidationRule::from)
+            .ifPresent(validationRules::add);
+        ofNullable(f.getAnnotation(ValidationRules.class))
+            .ifPresent(ann -> Stream.of(ann.value()).map(KubernetesValidationRule::from).forEach(validationRules::add));
+      } catch (NoSuchFieldException | SecurityException e) {
+      }
+      // then method
+      Stream.of(m.getAnnotationsByType(ValidationRule.class)).map(KubernetesValidationRule::from).forEach(validationRules::add);
+      return;
+    }
+
+    // fall back to standard logic
+    ofNullable(beanProperty.getAnnotation(ValidationRule.class)).map(KubernetesValidationRule::from)
+        .ifPresent(validationRules::add);
+    ofNullable(beanProperty.getAnnotation(ValidationRules.class))
         .ifPresent(ann -> Stream.of(ann.value()).map(KubernetesValidationRule::from).forEach(validationRules::add));
   }
 
@@ -190,7 +234,7 @@ public abstract class AbstractJsonSchema<T, B, V> {
         // TODO: process the other schema types for validation values
       }
 
-      collectValidationRules(() -> beanProperty.getAnnotation(ValidationRule.class), () -> beanProperty.getAnnotation(ValidationRules.class), validationRules);
+      collectValidationRules(beanProperty, validationRules);
 
       // TODO: should probably move to a standard annotations
       // see ValidationSchemaFactoryWrapper
@@ -253,12 +297,16 @@ public abstract class AbstractJsonSchema<T, B, V> {
     BeanDescription bd = resolvingContext.serializationConfig.introspect(gos.javaType);
     boolean preserveUnknownFields = bd.findAnyGetter() != null || bd.findAnySetterAccessor() != null;
 
-    // TODO: should these walk up the class hierarchy
-    extractSchemaSwaps(gos.javaType.getRawClass(), swaps);
+    extractAnnotations(gos.javaType.getRawClass(), SchemaSwap.class, ss -> {
+      swaps.registerSwap(gos.javaType.getRawClass(),
+          ss.originalType(),
+          ss.fieldName(),
+          ss.targetType(), ss.depth());
+    });
 
     List<String> required = new ArrayList<>();
 
-    for (Map.Entry<String, JsonSchema> property : gos.getProperties().entrySet()) {
+    for (Map.Entry<String, JsonSchema> property : new TreeMap<>(gos.getProperties()).entrySet()) {
       String name = property.getKey();
       if (ignores.contains(name)) {
         continue;
@@ -285,17 +333,6 @@ public abstract class AbstractJsonSchema<T, B, V> {
         required.add(name);
       }
 
-      // higher level metadata - TODO: not currently guarding against these being done in an ongoing swap
-      if (specReplicasPath == null && beanProperty.getAnnotation(SpecReplicas.class) != null) {
-        specReplicasPath = visited.values().stream().collect(Collectors.joining("."));
-      }
-      if (statusReplicasPath == null && beanProperty.getAnnotation(StatusReplicas.class) != null) {
-        statusReplicasPath = visited.values().stream().collect(Collectors.joining("."));
-      }
-      if (labelSelectorPath == null && beanProperty.getAnnotation(LabelSelector.class) != null) {
-        labelSelectorPath = visited.values().stream().collect(Collectors.joining("."));
-      }
-
       JavaType type = beanProperty.getType();
       if (swapResult.classRef != null) {
         propertyMetadata.schemaFrom = swapResult.classRef;
@@ -311,6 +348,15 @@ public abstract class AbstractJsonSchema<T, B, V> {
 
       T schema = resolvePropertySchema(visited, schemaSwaps, name, type, propertySchema);
 
+      if (!swapResult.onGoing) {
+        for (Entry<Class<? extends Annotation>, LinkedHashMap<String, AnnotationMetadata>> entry : pathMetadata.entrySet()) {
+          String jsonType = getType(schema);
+          ofNullable(beanProperty.getAnnotation(entry.getKey())).ifPresent(
+              ann -> entry.getValue().put(toFQN(savedVisited, name),
+                  new AnnotationMetadata(ann, propertyMetadata.description, jsonType)));
+        }
+      }
+
       schema = propertyMetadata.updateSchema(schema);
 
       visited = savedVisited;
@@ -318,13 +364,21 @@ public abstract class AbstractJsonSchema<T, B, V> {
       addProperty(name, builder, schema);
     }
 
-    // TODO: should these walk up the class hierarchy
     List<KubernetesValidationRule> validationRules = new ArrayList<>();
-    Annotations anns = bd.getClassAnnotations();
-    collectValidationRules(() -> anns.get(ValidationRule.class), () -> anns.get(ValidationRules.class), validationRules);
+    extractAnnotations(gos.javaType.getRawClass(), ValidationRule.class,
+        v -> validationRules.add(KubernetesValidationRule.from(v)));
 
     swaps.throwIfUnmatchedSwaps();
     return build(builder, required, validationRules, preserveUnknownFields);
+  }
+
+  protected abstract String getType(T schema);
+
+  static String toFQN(LinkedHashMap<String, String> visited, String name) {
+    if (visited.isEmpty()) {
+      return "." + name;
+    }
+    return visited.values().stream().collect(Collectors.joining(".", ".", ".")) + name;
   }
 
   private T resolvePropertySchema(LinkedHashMap<String, String> visited, InternalSchemaSwaps schemaSwaps, String name,

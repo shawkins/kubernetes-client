@@ -158,4 +158,9 @@ public class JsonSchema extends AbstractJsonSchema<JSONSchemaProps, JSONSchemaPr
         .build();
   }
 
+  @Override
+  protected String getType(JSONSchemaProps schema) {
+    return schema.getType();
+  }
+
 }

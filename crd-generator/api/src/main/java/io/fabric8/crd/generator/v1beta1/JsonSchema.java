@@ -17,6 +17,7 @@ package io.fabric8.crd.generator.v1beta1;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.fabric8.crd.generator.AbstractJsonSchema;
+import io.fabric8.crd.generator.ResolvingContext;
 import io.fabric8.kubernetes.api.model.apiextensions.v1beta1.JSONSchemaProps;
 import io.fabric8.kubernetes.api.model.apiextensions.v1beta1.JSONSchemaPropsBuilder;
 import io.fabric8.kubernetes.api.model.apiextensions.v1beta1.ValidationRule;
@@ -26,8 +27,6 @@ import java.util.List;
 
 public class JsonSchema extends AbstractJsonSchema<JSONSchemaProps, JSONSchemaPropsBuilder, ValidationRule> {
 
-  private static final JsonSchema instance = new JsonSchema();
-
   private static final JSONSchemaProps JSON_SCHEMA_INT_OR_STRING = new JSONSchemaPropsBuilder()
       .withXKubernetesIntOrString(true)
       .withAnyOf(
@@ -35,15 +34,8 @@ public class JsonSchema extends AbstractJsonSchema<JSONSchemaProps, JSONSchemaPr
           new JSONSchemaPropsBuilder().withType("string").build())
       .build();
 
-  /**
-   * Creates the JSON schema for the class.
-   *
-   * @param definition The definition.
-   * @param ignore an optional list of property names to ignore
-   * @return The schema.
-   */
-  public static JSONSchemaProps from(Class<?> definition) {
-    return instance.internalFrom(definition, "kind", "apiVersion", "metadata");
+  public JsonSchema(ResolvingContext resolvingContext, Class<?> definition) {
+    super(resolvingContext, definition);
   }
 
   @Override

@@ -24,18 +24,9 @@ import com.fasterxml.jackson.databind.BeanProperty;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationConfig;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.jsonFormatVisitors.JsonObjectFormatVisitor;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.util.Annotations;
 import com.fasterxml.jackson.module.jsonSchema.JsonSchema;
-import com.fasterxml.jackson.module.jsonSchema.JsonSchemaGenerator;
-import com.fasterxml.jackson.module.jsonSchema.factories.JsonSchemaFactory;
-import com.fasterxml.jackson.module.jsonSchema.factories.SchemaFactoryWrapper;
-import com.fasterxml.jackson.module.jsonSchema.factories.VisitorContext;
-import com.fasterxml.jackson.module.jsonSchema.factories.WrapperFactory;
 import com.fasterxml.jackson.module.jsonSchema.types.ArraySchema.Items;
 import com.fasterxml.jackson.module.jsonSchema.types.ObjectSchema;
 import com.fasterxml.jackson.module.jsonSchema.types.ObjectSchema.SchemaAdditionalProperties;
@@ -43,6 +34,7 @@ import com.fasterxml.jackson.module.jsonSchema.types.ReferenceSchema;
 import com.fasterxml.jackson.module.jsonSchema.types.StringSchema;
 import com.fasterxml.jackson.module.jsonSchema.types.ValueTypeSchema;
 import io.fabric8.crd.generator.InternalSchemaSwaps.SwapResult;
+import io.fabric8.crd.generator.ResolvingContext.GeneratorObjectSchema;
 import io.fabric8.crd.generator.annotation.PreserveUnknownFields;
 import io.fabric8.crd.generator.annotation.SchemaFrom;
 import io.fabric8.crd.generator.annotation.SchemaSwap;
@@ -56,8 +48,10 @@ import io.fabric8.generator.annotation.ValidationRule;
 import io.fabric8.generator.annotation.ValidationRules;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.Quantity;
-import io.fabric8.kubernetes.client.utils.KubernetesSerialization;
 import io.fabric8.kubernetes.client.utils.Utils;
+import io.fabric8.kubernetes.model.annotation.LabelSelector;
+import io.fabric8.kubernetes.model.annotation.SpecReplicas;
+import io.fabric8.kubernetes.model.annotation.StatusReplicas;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,12 +59,12 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -90,76 +84,31 @@ public abstract class AbstractJsonSchema<T, B, V> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractJsonSchema.class);
 
-  // TODO: remove static state
-  private static final JsonSchemaGenerator GENERATOR;
-  private static final SerializationConfig SERIALIZATION_CONFIG;
-  private static final KubernetesSerialization KUBERNETES_SERIALIZATION;
-  private static final Map<String, GeneratorObjectSchema> SEEN = new HashMap<>();
+  private ResolvingContext resolvingContext;
+  private String specReplicasPath;
+  private String statusReplicasPath;
+  private String labelSelectorPath;
+  private T root;
 
-  static {
-    ObjectMapper mapper = new ObjectMapper();
-    SERIALIZATION_CONFIG = mapper.getSerializationConfig();
-    // initialize with client defaults
-    KUBERNETES_SERIALIZATION = new KubernetesSerialization(mapper, false);
-    GENERATOR = new JsonSchemaGenerator(mapper, new WrapperFactory() {
-
-      @Override
-      public SchemaFactoryWrapper getWrapper(SerializerProvider provider) {
-        return new KubernetesSchemaFactoryWrapper(provider, this);
-      }
-
-      @Override
-      public SchemaFactoryWrapper getWrapper(SerializerProvider provider, VisitorContext rvc) {
-        SchemaFactoryWrapper wrapper = getWrapper(provider);
-        wrapper.setVisitorContext(rvc);
-        return wrapper;
-      }
-
-    });
+  public AbstractJsonSchema(ResolvingContext resolvingContext, Class<?> def) {
+    this.resolvingContext = resolvingContext;
+    this.root = resolveRoot(def);
   }
 
-  private static final class GeneratorObjectSchema extends ObjectSchema {
-
-    JavaType javaType;
-    Map<String, BeanProperty> beanProperties = new LinkedHashMap<>();
-
-    @Override
-    public void putOptionalProperty(BeanProperty property, JsonSchema jsonSchema) {
-      beanProperties.put(property.getName(), property);
-      super.putOptionalProperty(property, jsonSchema);
-    }
-
-    @Override
-    public JsonSchema putProperty(BeanProperty property, JsonSchema value) {
-      beanProperties.put(property.getName(), property);
-      return super.putProperty(property, value);
-    }
-
+  public T getSchema() {
+    return root;
   }
 
-  private static final class KubernetesSchemaFactoryWrapper extends SchemaFactoryWrapper {
+  public Optional<String> getLabelSelectorPath() {
+    return ofNullable(labelSelectorPath);
+  }
 
-    private KubernetesSchemaFactoryWrapper(SerializerProvider p, WrapperFactory wrapperFactory) {
-      super(p, wrapperFactory);
-      this.schemaProvider = new JsonSchemaFactory() {
+  public Optional<String> getSpecReplicasPath() {
+    return ofNullable(specReplicasPath);
+  }
 
-        @Override
-        public ObjectSchema objectSchema() {
-          return new GeneratorObjectSchema();
-        }
-
-      };
-    }
-
-    @Override
-    public JsonObjectFormatVisitor expectObjectFormat(JavaType convertedType) {
-      // TODO: jackson should pass in directly here if there's an anyGetter / setter
-      // so that we may directly mark preserve unknown
-      JsonObjectFormatVisitor result = super.expectObjectFormat(convertedType);
-      ((GeneratorObjectSchema)schema).javaType = convertedType;
-      SEEN.putIfAbsent(this.visitorContext.getSeenSchemaUri(convertedType), (GeneratorObjectSchema)schema);
-      return result;
-    }
+  public Optional<String> getStatusReplicasPath() {
+    return ofNullable(statusReplicasPath);
   }
 
   protected List<V> mapValidationRules(List<KubernetesValidationRule> validationRules) {
@@ -179,13 +128,13 @@ public abstract class AbstractJsonSchema<T, B, V> {
    * @param ignore a potentially empty list of property names to ignore while generating the schema
    * @return The schema.
    */
-  protected T internalFrom(Class<?> definition, String... ignore) {
+  private T resolveRoot(Class<?> definition) {
     InternalSchemaSwaps schemaSwaps = new InternalSchemaSwaps();
     JsonSchema schema = toJsonSchema(definition);
     if (schema instanceof GeneratorObjectSchema) {
-      return internalFromImpl(new LinkedHashMap<>(), schemaSwaps, schema, ignore);
+      return resolveObject(new LinkedHashMap<>(), schemaSwaps, schema, "kind", "apiVersion", "metadata");
     }
-    return getPropertySchema(new LinkedHashMap<>(), schemaSwaps, null, SERIALIZATION_CONFIG.constructType(definition), schema);
+    return resolvePropertySchema(new LinkedHashMap<>(), schemaSwaps, null, resolvingContext.serializationConfig.constructType(definition), schema);
   }
 
   private void extractSchemaSwaps(Class<?> clazz, InternalSchemaSwaps schemaSwaps) {
@@ -197,7 +146,6 @@ public abstract class AbstractJsonSchema<T, B, V> {
           schemaSwap.targetType(), schemaSwap.depth());
     }
   }
-
 
   static void collectValidationRules(Supplier<ValidationRule> single, Supplier<ValidationRules> multiple, List<KubernetesValidationRule> validationRules) {
     ofNullable(single.get()).map(KubernetesValidationRule::from).ifPresent(validationRules::add);
@@ -291,7 +239,7 @@ public abstract class AbstractJsonSchema<T, B, V> {
     }
   }
 
-  private T internalFromImpl(LinkedHashMap<String, String> visited, InternalSchemaSwaps schemaSwaps, JsonSchema jacksonSchema,
+  private T resolveObject(LinkedHashMap<String, String> visited, InternalSchemaSwaps schemaSwaps, JsonSchema jacksonSchema,
       String... ignore) {
     Set<String> ignores = ignore.length > 0 ? new LinkedHashSet<>(Arrays.asList(ignore)) : Collections.emptySet();
 
@@ -301,8 +249,8 @@ public abstract class AbstractJsonSchema<T, B, V> {
     final InternalSchemaSwaps swaps = schemaSwaps;
 
     GeneratorObjectSchema gos = (GeneratorObjectSchema)jacksonSchema.asObjectSchema();
-    AnnotationIntrospector ai = SERIALIZATION_CONFIG.getAnnotationIntrospector();
-    BeanDescription bd = SERIALIZATION_CONFIG.introspect(gos.javaType);
+    AnnotationIntrospector ai = resolvingContext.serializationConfig.getAnnotationIntrospector();
+    BeanDescription bd = resolvingContext.serializationConfig.introspect(gos.javaType);
     boolean preserveUnknownFields = bd.findAnyGetter() != null || bd.findAnySetterAccessor() != null;
 
     // TODO: should these walk up the class hierarchy
@@ -337,6 +285,17 @@ public abstract class AbstractJsonSchema<T, B, V> {
         required.add(name);
       }
 
+      // higher level metadata - TODO: not currently guarding against these being done in an ongoing swap
+      if (specReplicasPath == null && beanProperty.getAnnotation(SpecReplicas.class) != null) {
+        specReplicasPath = visited.values().stream().collect(Collectors.joining("."));
+      }
+      if (statusReplicasPath == null && beanProperty.getAnnotation(StatusReplicas.class) != null) {
+        statusReplicasPath = visited.values().stream().collect(Collectors.joining("."));
+      }
+      if (labelSelectorPath == null && beanProperty.getAnnotation(LabelSelector.class) != null) {
+        labelSelectorPath = visited.values().stream().collect(Collectors.joining("."));
+      }
+
       JavaType type = beanProperty.getType();
       if (swapResult.classRef != null) {
         propertyMetadata.schemaFrom = swapResult.classRef;
@@ -347,10 +306,10 @@ public abstract class AbstractJsonSchema<T, B, V> {
           continue;
         }
         propertySchema = toJsonSchema(propertyMetadata.schemaFrom);
-        type = SERIALIZATION_CONFIG.constructType(propertyMetadata.schemaFrom);
+        type = resolvingContext.serializationConfig.constructType(propertyMetadata.schemaFrom);
       }
 
-      T schema = getPropertySchema(visited, schemaSwaps, name, type, propertySchema);
+      T schema = resolvePropertySchema(visited, schemaSwaps, name, type, propertySchema);
 
       schema = propertyMetadata.updateSchema(schema);
 
@@ -368,11 +327,11 @@ public abstract class AbstractJsonSchema<T, B, V> {
     return build(builder, required, validationRules, preserveUnknownFields);
   }
 
-  private T getPropertySchema(LinkedHashMap<String, String> visited, InternalSchemaSwaps schemaSwaps, String name,
+  private T resolvePropertySchema(LinkedHashMap<String, String> visited, InternalSchemaSwaps schemaSwaps, String name,
       JavaType type, JsonSchema jacksonSchema) {
 
     if (type.getRawClass() == IntOrString.class || type.getRawClass() == Quantity.class) {
-      return intOrString();
+      return intOrString(); // TODO: create a serializer for this and remove this override
     }
 
     if (jacksonSchema.isArraySchema()) {
@@ -381,7 +340,7 @@ public abstract class AbstractJsonSchema<T, B, V> {
         throw new IllegalStateException("not yet supported");
       }
       JsonSchema arraySchema = jacksonSchema.asArraySchema().getItems().asSingleItems().getSchema();
-      final T schema = getPropertySchema(visited, schemaSwaps, name, type.getContentType(), arraySchema);
+      final T schema = resolvePropertySchema(visited, schemaSwaps, name, type.getContentType(), arraySchema);
       return arrayLikeProperty(schema);
     } else if (jacksonSchema.isIntegerSchema()) {
       return singleProperty("integer");
@@ -403,7 +362,7 @@ public abstract class AbstractJsonSchema<T, B, V> {
       }
       return singleProperty("string");
     } else if (jacksonSchema.isNullSchema()) {
-      return singleProperty("object");
+      return singleProperty("object"); // TODO: this may not be the right choice, but rarely will someone be using Void
     } else if (jacksonSchema.isAnySchema()) {
       // TODO: this could optionally take a type restriction
       T schema = singleProperty(null);
@@ -414,7 +373,7 @@ public abstract class AbstractJsonSchema<T, B, V> {
     } else if (jacksonSchema instanceof ReferenceSchema) {
       // de-reference the reference schema - these can be naturally non-cyclic, for example siblings
       ReferenceSchema ref = (ReferenceSchema)jacksonSchema;
-      GeneratorObjectSchema referenced = SEEN.get(ref.get$ref());
+      GeneratorObjectSchema referenced = resolvingContext.seen.get(ref.get$ref());
       Utils.checkNotNull(referenced, "Could not find previously generated schema");
       jacksonSchema = referenced;
     }
@@ -428,7 +387,7 @@ public abstract class AbstractJsonSchema<T, B, V> {
 
       final JavaType valueType = type.getContentType();
       JsonSchema mapValueSchema = ((SchemaAdditionalProperties)((ObjectSchema)jacksonSchema).getAdditionalProperties()).getJsonSchema();
-      T component = getPropertySchema(visited, schemaSwaps, name, valueType, mapValueSchema);
+      T component = resolvePropertySchema(visited, schemaSwaps, name, valueType, mapValueSchema);
       return mapLikeProperty(component);
     }
 
@@ -440,7 +399,7 @@ public abstract class AbstractJsonSchema<T, B, V> {
               + name);
     }
 
-    T res = internalFromImpl(visited, schemaSwaps, jacksonSchema);
+    T res = resolveObject(visited, schemaSwaps, jacksonSchema);
     visited.remove(def.getName());
     return res;
   }
@@ -457,7 +416,7 @@ public abstract class AbstractJsonSchema<T, B, V> {
         // hack to figure out the enum constant
         try {
           Object value = field.get(null);
-          toIgnore.add(KUBERNETES_SERIALIZATION.unmarshal(KUBERNETES_SERIALIZATION.asJson(value), String.class));
+          toIgnore.add(resolvingContext.kubernetesSerialization.unmarshal(resolvingContext.kubernetesSerialization.asJson(value), String.class));
         } catch (IllegalArgumentException | IllegalAccessException e) {
         }
       }
@@ -553,7 +512,7 @@ public abstract class AbstractJsonSchema<T, B, V> {
 
   private JsonSchema toJsonSchema(Class<?> clazz) {
     try {
-      return GENERATOR.generateSchema(clazz);
+      return resolvingContext.generator.generateSchema(clazz);
     } catch (JsonMappingException e) {
       throw new RuntimeException(e);
     }

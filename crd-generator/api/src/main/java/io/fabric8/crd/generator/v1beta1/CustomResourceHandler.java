@@ -98,8 +98,4 @@ public class CustomResourceHandler extends AbstractCustomResourceHandler {
     resources.decorate(new SortPrinterColumnsDecorator(name, version));
   }
 
-  @Override
-  public void handle(CustomResourceInfo config) {
-    super.handle(config);
-  }
 }

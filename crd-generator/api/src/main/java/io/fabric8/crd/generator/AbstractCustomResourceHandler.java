@@ -16,25 +16,6 @@
 package io.fabric8.crd.generator;
 
 import io.fabric8.crd.generator.decorator.Decorator;
-import io.fabric8.crd.generator.visitor.AdditionalPrinterColumnDetector;
-import io.fabric8.crd.generator.visitor.ClassDependenciesVisitor;
-import io.fabric8.crd.generator.visitor.LabelSelectorPathDetector;
-import io.fabric8.crd.generator.visitor.SpecReplicasPathDetector;
-import io.fabric8.crd.generator.visitor.StatusReplicasPathDetector;
-import io.fabric8.kubernetes.client.utils.Utils;
-import org.yaml.snakeyaml.introspector.Property;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
 
 /**
  * This class encapsulates the common behavior between v1beta1 and v1 CRD generation logic. The
@@ -43,105 +24,31 @@ import java.util.stream.Collectors;
 public abstract class AbstractCustomResourceHandler {
 
   protected final Resources resources;
-  private final boolean parallel;
 
-  protected AbstractCustomResourceHandler(Resources resources, boolean parallel) {
+  protected AbstractCustomResourceHandler(Resources resources) {
     this.resources = resources;
-    this.parallel = parallel;
   }
 
-  public void handle(CustomResourceInfo config) {
-    final String name = config.crdName();
-    final String version = config.version();
+  public abstract void handle(CustomResourceInfo config);
 
-    Class<?> def = config.definition();
-
-    SpecReplicasPathDetector specReplicasPathDetector = new SpecReplicasPathDetector();
-    StatusReplicasPathDetector statusReplicasPathDetector = new StatusReplicasPathDetector();
-    LabelSelectorPathDetector labelSelectorPathDetector = new LabelSelectorPathDetector();
-    AdditionalPrinterColumnDetector additionalPrinterColumnDetector = new AdditionalPrinterColumnDetector();
-
-    ClassDependenciesVisitor traversedClassesVisitor = new ClassDependenciesVisitor(config.crClassName(), name);
-
-    List<Object> visitors = new ArrayList<>();
-    if (config.specClassName().isPresent()) {
-      visitors.add(specReplicasPathDetector);
+  /*Map<String, Property> additionalPrinterColumns = new HashMap<>(additionalPrinterColumnDetector.getProperties());
+  additionalPrinterColumns.forEach((path, property) -> {
+    Map<String, Object> parameters = property.getAnnotations().stream()
+        .filter(a -> a.getClassRef().getName().equals("PrinterColumn")).map(AnnotationRef::getParameters)
+        .findFirst().orElse(Collections.emptyMap());
+    String type = AbstractJsonSchema.getSchemaTypeFor(property.getTypeRef());
+    String column = (String) parameters.get("name");
+    if (Utils.isNullOrEmpty(column)) {
+      column = property.getName().toUpperCase();
     }
-    if (config.statusClassName().isPresent()) {
-      visitors.add(statusReplicasPathDetector);
-    }
-    visitors.add(labelSelectorPathDetector);
-    visitors.add(additionalPrinterColumnDetector);
-    visitors.add(traversedClassesVisitor);
+    String description = property.getComments().stream().filter(l -> !l.trim().startsWith("@"))
+        .collect(Collectors.joining(" ")).trim();
+    String format = (String) parameters.get("format");
+    int priority = (int) parameters.getOrDefault("priority", 0);
 
-    visitTypeDef(def, visitors);
-
-    addDecorators(config, def, specReplicasPathDetector.getPath(),
-        statusReplicasPathDetector.getPath(), labelSelectorPathDetector.getPath());
-
-    Map<String, Property> additionalPrinterColumns = new HashMap<>(additionalPrinterColumnDetector.getProperties());
-    additionalPrinterColumns.forEach((path, property) -> {
-      Map<String, Object> parameters = property.getAnnotations().stream()
-          .filter(a -> a.getClassRef().getName().equals("PrinterColumn")).map(AnnotationRef::getParameters)
-          .findFirst().orElse(Collections.emptyMap());
-      String type = AbstractJsonSchema.getSchemaTypeFor(property.getTypeRef());
-      String column = (String) parameters.get("name");
-      if (Utils.isNullOrEmpty(column)) {
-        column = property.getName().toUpperCase();
-      }
-      String description = property.getComments().stream().filter(l -> !l.trim().startsWith("@"))
-          .collect(Collectors.joining(" ")).trim();
-      String format = (String) parameters.get("format");
-      int priority = (int) parameters.getOrDefault("priority", 0);
-
-      resources.decorate(
-          getPrinterColumnDecorator(name, version, path, type, column, description, format, priority));
-    });
-  }
-
-  private Class<?> visitTypeDef(Class<?> def, List<Object> visitors) {
-    if (visitors.isEmpty()) {
-      return def;
-    }
-    if (parallel) {
-      return visitTypeDefInParallel(def, visitors);
-    } else {
-      return visitTypeDefSequentially(def, visitors);
-    }
-  }
-
-  private Class<?> visitTypeDefSequentially(Class<?> def, List<Object> visitors) {
-    for (Visitor<TypeDefBuilder> visitor : visitors) {
-      builder.accept(visitor);
-    }
-    return builder.build();
-  }
-
-  private Class<?> visitTypeDefInParallel(Class<?> def, List<Object> visitors) {
-    final ExecutorService executorService = Executors.newFixedThreadPool(
-        Math.min(visitors.size(), Runtime.getRuntime().availableProcessors()));
-    try {
-      List<CompletableFuture<Void>> futures = new ArrayList<>();
-      for (Visitor<TypeDefBuilder> visitor : visitors) {
-        futures.add(CompletableFuture.runAsync(() -> {
-          builder.accept(visitor);
-        }, executorService));
-      }
-      try {
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
-      } catch (InterruptedException interruptedException) {
-        Thread.currentThread().interrupt();
-      } catch (ExecutionException ex) {
-        if (ex.getCause() instanceof RuntimeException) {
-          throw (RuntimeException) ex.getCause();
-        }
-        throw new RuntimeException(ex.getCause());
-      }
-    } finally {
-      executorService.shutdown();
-    }
-    return def;
-  }
+    resources.decorate(
+        getPrinterColumnDecorator(name, version, path, type, column, description, format, priority));
+  });*/
 
   /**
    * Provides the decorator implementation associated with the CRD generation version.
@@ -158,18 +65,4 @@ public abstract class AbstractCustomResourceHandler {
   protected abstract Decorator<?> getPrinterColumnDecorator(String name, String version, String path,
       String type, String column, String description, String format, int priority);
 
-  /**
-   * Adds all the necessary decorators to build the specific CRD version. For optional paths, see
-   * https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.20/#customresourcesubresourcescale-v1-apiextensions-k8s-io
-   * These paths
-   *
-   * @param config the gathered {@link CustomResourceInfo} used as basis for the CRD generation
-   * @param def the Class of the custom resource
-   * @param specReplicasPath an optionally detected path of field defining spec replicas
-   * @param statusReplicasPath an optionally detected path of field defining status replicas
-   * @param labelSelectorPath an optionally detected path of field defining `status.selector`
-   */
-  protected abstract void addDecorators(CustomResourceInfo config, Class<?> def,
-      Optional<String> specReplicasPath, Optional<String> statusReplicasPath,
-      Optional<String> labelSelectorPath);
 }

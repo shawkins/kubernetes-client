@@ -13,14 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package existingjavatypes;
+package io.fabric8.crd.generator.types;
 
-import com.example.v1.ExistingJavaTypeSpec;
-import io.fabric8.kubernetes.api.model.Affinity;
+import io.fabric8.kubernetes.client.CustomResource;
+import io.fabric8.kubernetes.model.annotation.Group;
+import io.fabric8.kubernetes.model.annotation.Version;
 
-public class ExistingJavaTypes {
-  public void example() {
-    ExistingJavaTypeSpec existingJavaTypeSpec = new ExistingJavaTypeSpec();
-    existingJavaTypeSpec.setAffinity(new Affinity());
-  }
+@Group("type-mappings.fabric8.io")
+@Version("v1")
+public class TypeMappings extends CustomResource<TypeMappingsSpec, Void> {
 }

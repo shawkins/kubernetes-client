@@ -31,11 +31,10 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.Base64;
@@ -46,11 +45,8 @@ import static io.fabric8.kubernetes.client.http.TestStandardHttpClientFactory.Mo
 import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.CLIENT_ID_KUBECONFIG;
 import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.CLIENT_SECRET_KUBECONFIG;
 import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.ID_TOKEN_KUBECONFIG;
-import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.ID_TOKEN_PARAM;
 import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.ISSUER_KUBECONFIG;
 import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.REFRESH_TOKEN_KUBECONFIG;
-import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.REFRESH_TOKEN_PARAM;
-import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.TOKEN_ENDPOINT_PARAM;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -74,98 +70,23 @@ class OpenIDConnectionUtilsTest {
   }
 
   @Test
-  void loadTokenURL() throws Exception {
+  // TODO: remove in favor of specific tests, kept for checking compatibility
+  void persistOAuthTokenWithUpdatedToken(@TempDir Path tempDir) throws IOException {
     // Given
-    httpClient.expect("/.well-known/openid-configuration", 200,
-        "{\"issuer\": \"https://accounts.example.com\",\"token_endpoint\": \"https://oauth2.exampleapis.com/token\"}");
-    // When
-    Map<String, Object> result = OpenIDConnectionUtils.getOIDCDiscoveryDocumentAsMap(httpClient, "https://accounts.example.com")
-        .get();
-    // Then
-    assertThat(result)
-        .isNotNull()
-        .containsEntry("token_endpoint", "https://oauth2.exampleapis.com/token");
-  }
-
-  @Test
-  void loadTokenURLWhenNotFound() throws Exception {
-    // Given
-    httpClient.expect("/.well-known/openid-configuration", 404);
-    // When
-    Map<String, Object> result = OpenIDConnectionUtils.getOIDCDiscoveryDocumentAsMap(httpClient, "https://accounts.example.com")
-        .get();
-    // Then
-    assertThat(result).isEmpty();
-  }
-
-  @Test
-  void refreshOidcToken() throws Exception {
-    // Given
-    String clientId = "test-client-id";
-    String refreshToken = "test-refresh-token";
-    String clientSecret = "test-client-secret";
-    String tokenEndpointUrl = "https://oauth2.exampleapis.com/token";
-    httpClient.expect("/token", 200, "{" +
-        "\"id_token\":\"thisisatesttoken\"," +
-        "\"access_token\":\"thisisrefreshtoken\"," +
-        "\"expires_in\":3599," +
-        "\"scope\":\"openid https://www.exampleapis.com/auth/userinfo.email\"," +
-        "\"token_type\":\"Bearer\"" +
-        "}");
-    // When
-    Map<String, Object> result = OpenIDConnectionUtils
-        .refreshOidcToken(httpClient, clientId, refreshToken, clientSecret, tokenEndpointUrl).get();
-    // Then
-    assertThat(result)
-        .isNotNull()
-        .containsEntry("id_token", "thisisatesttoken");
-  }
-
-  @Test
-  void fetchOIDCProviderDiscoveryDocumentAndRefreshToken() throws Exception {
-    // Given
-    Map<String, Object> discoveryDocument = new HashMap<>();
-    discoveryDocument.put("token_endpoint", "https://oauth2.exampleapis.com/token");
-    String clientId = "test-client-id";
-    String refreshToken = "test-refresh-token";
-    String clientSecret = "test-client-secret";
-    httpClient.expect("/token", 200, "{" +
-        "\"id_token\":\"thisisatesttoken\"," +
-        "\"access_token\":\"thisisrefreshtoken\"," +
-        "\"expires_in\":3599," +
-        "\"scope\":\"openid https://www.exampleapis.com/auth/userinfo.email\"," +
-        "\"token_type\":\"Bearer\"" +
-        "}");
-    // When
-    Map<String, Object> result = OpenIDConnectionUtils.refreshOidcToken(httpClient,
-        clientId, refreshToken, clientSecret,
-        OpenIDConnectionUtils.getParametersFromDiscoveryResponse(discoveryDocument, "token_endpoint")).get();
-    // Then
-    assertThat(result)
-        .isNotNull()
-        .containsEntry("id_token", "thisisatesttoken");
-  }
-
-  @Test
-  void persistKubeConfigWithUpdatedToken() throws IOException {
-    // Given
-    Map<String, Object> openIdProviderResponse = new HashMap<>();
-    openIdProviderResponse.put(ID_TOKEN_PARAM, "id-token-updated");
-    openIdProviderResponse.put(REFRESH_TOKEN_PARAM, "refresh-token-updated");
-    File tempFile = Files.createTempFile("test", "kubeconfig").toFile();
-    Files.copy(getClass().getResourceAsStream("/test-kubeconfig-oidc"), Paths.get(tempFile.getPath()),
+    final OpenIDConnectionUtils.OAuthToken oAuthTokenResponse = new OpenIDConnectionUtils.OAuthToken();
+    oAuthTokenResponse.setIdToken("id-token-updated");
+    oAuthTokenResponse.setRefreshToken("refresh-token-updated");
+    Path kubeConfig = Files.createTempFile(tempDir, "test", "kubeconfig");
+    Files.copy(OpenIDConnectionUtilsTest.class.getResourceAsStream("/test-kubeconfig-oidc"), kubeConfig,
         StandardCopyOption.REPLACE_EXISTING);
-
-    Config theConfig = Config.fromKubeconfig(null, IOHelpers.readFully(new FileInputStream(tempFile), StandardCharsets.UTF_8),
-        tempFile.getAbsolutePath());
+    Config originalConfig = Config.fromKubeconfig(null, new String(Files.readAllBytes(kubeConfig), StandardCharsets.UTF_8),
+        kubeConfig.toFile().getAbsolutePath());
 
     // When
-    boolean isPersisted = OpenIDConnectionUtils.persistKubeConfigWithUpdatedToken(theConfig,
-        openIdProviderResponse);
+    OpenIDConnectionUtils.persistOAuthToken(originalConfig, oAuthTokenResponse, null);
 
     // Then
-    assertTrue(isPersisted);
-    io.fabric8.kubernetes.api.model.Config config = KubeConfigUtils.parseConfig(tempFile);
+    io.fabric8.kubernetes.api.model.Config config = KubeConfigUtils.parseConfig(kubeConfig.toFile());
     assertNotNull(config);
     NamedContext currentNamedContext = KubeConfigUtils.getCurrentContext(config);
     assertNotNull(currentNamedContext);
@@ -174,7 +95,7 @@ class OpenIDConnectionUtilsTest {
     Map<String, String> authProviderConfigInFile = config.getUsers().get(currentUserIndex).getUser().getAuthProvider()
         .getConfig();
     assertFalse(authProviderConfigInFile.isEmpty());
-    Map<String, String> authProviderConfigInMemory = theConfig.getAuthProvider().getConfig();
+    Map<String, String> authProviderConfigInMemory = originalConfig.getAuthProvider().getConfig();
     //auth info should be updated in memory
     assertEquals("id-token-updated", authProviderConfigInMemory.get(ID_TOKEN_KUBECONFIG));
     assertEquals("refresh-token-updated", authProviderConfigInMemory.get(REFRESH_TOKEN_KUBECONFIG));
@@ -272,20 +193,6 @@ class OpenIDConnectionUtilsTest {
       sslUtilsMockedStatic.verify(
           () -> SSLUtils.keyManagers(eq("cert"), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()));
     }
-  }
-
-  @Test
-  void getParametersFromDiscoveryResponse() {
-    // Given
-    Map<String, Object> discoveryDocument = new HashMap<>();
-    discoveryDocument.put("issuer", "https://api.login.example.com");
-    discoveryDocument.put("token_endpoint", "https//api.login.example.com/oauth2/get_token");
-    discoveryDocument.put("jwks_uri", "https//api.login.example.com/openid/v1/certs");
-
-    // When + Then
-    assertEquals("https//api.login.example.com/oauth2/get_token",
-        OpenIDConnectionUtils.getParametersFromDiscoveryResponse(discoveryDocument, TOKEN_ENDPOINT_PARAM));
-    assertEquals("", OpenIDConnectionUtils.getParametersFromDiscoveryResponse(discoveryDocument, "userinfo_endpoint"));
   }
 
   @Test

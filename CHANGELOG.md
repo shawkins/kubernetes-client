@@ -6,12 +6,20 @@
 * Fix #5866: Addressed cycle in crd generation with Java 19+ and ZonedDateTime
 
 #### Improvements
+* Fix #5878: (java-generator) Add implements Editable for extraAnnotations
 
 #### Dependency Upgrade
 
 #### New Features
 
 #### _**Note**_: Breaking changes
+
+### 6.12.1  (2024-04-18)
+
+#### Bugs
+* Fix #5880: OpenID Connect token refreshed in loaded Config
+* Fix #5911: (crd-generator) Improve error message for detected cycles
+* Fix #5898: Kube API module resolvable from Maven Central
 
 ### 6.12.0 (2024-04-12)
 

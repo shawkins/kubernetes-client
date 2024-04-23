@@ -22,8 +22,10 @@ import io.fabric8.kubernetes.api.model.NamedClusterBuilder;
 import io.fabric8.kubernetes.api.model.NamedContextBuilder;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
+import io.fabric8.kubernetes.client.http.TestStandardHttpClient;
 import io.fabric8.kubernetes.client.http.TestStandardHttpClientBuilder;
 import io.fabric8.kubernetes.client.http.TestStandardHttpClientFactory;
+import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.cert.X509CertificateHolder;
@@ -31,13 +33,13 @@ import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.math.BigInteger;
@@ -58,9 +60,11 @@ import java.util.concurrent.TimeUnit;
 import javax.net.ssl.X509ExtendedTrustManager;
 
 import static io.fabric8.kubernetes.client.http.TestStandardHttpClientFactory.Mode.SINGLETON;
+import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.persistOAuthToken;
 import static io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils.resolveOIDCTokenFromAuthConfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.data.MapEntry.entry;
 
 class OpenIDConnectionUtilsBehaviorTest {
 
@@ -116,6 +120,7 @@ class OpenIDConnectionUtilsBehaviorTest {
     authProviderConfig.put("id-token", "original-token");
     authProviderConfig.put("idp-issuer-url", "https://auth.fabric8.example.com");
     authProviderConfig.put("client-id", "id-of-test-client");
+    authProviderConfig.put("client-secret", "secret-of-test-client");
   }
 
   @AfterEach
@@ -195,20 +200,59 @@ class OpenIDConnectionUtilsBehaviorTest {
 
     @Nested
     @DisplayName("With 404 OpenID Connect Discovery response")
-    @Disabled("This scenario is not implemented") // TODO
     class WithNotFoundOpenIDConnectDiscovery {
+
+      private String result;
+
       @BeforeEach
-      void setUp() {
+      void setUp() throws Exception {
         httpClientFactory.expect("/.well-known/openid-configuration",
             404, "Not Found /.well-known/openid-configuration");
+        result = resolveOIDCTokenFromAuthConfig(originalConfig, authProviderConfig, httpClientBuilder)
+            .get(10, TimeUnit.SECONDS);
       }
 
       @Test
       @DisplayName("Resolves token from auth provider config (fallback)")
-      void fallbacksToOriginalToken() throws Exception {
-        final String result = resolveOIDCTokenFromAuthConfig(originalConfig, authProviderConfig, httpClientBuilder)
-            .get(10, TimeUnit.SECONDS);
+      void fallbacksToOriginalToken() {
         assertThat(result).isEqualTo("original-token");
+      }
+
+      @Test
+      @DisplayName("Logs OpenID Connect Discovery fallback warning")
+      void logsTokenFallbackWarning() {
+        assertThat(systemErr.toString())
+            .contains("oidc: failed to query metadata endpoint: 404 Not Found /.well-known/openid-configuration");
+      }
+    }
+
+    @Nested
+    @DisplayName("With malformed OpenID Connect Discovery response")
+    class WithMalformedOpenIDConnectDiscoveryResponse {
+
+      private String result;
+
+      @BeforeEach
+      void setUp() throws Exception {
+        httpClientFactory.expect("/.well-known/openid-configuration",
+            200, "this-is-not-json");
+        result = resolveOIDCTokenFromAuthConfig(originalConfig, authProviderConfig, httpClientBuilder)
+            .get(10, TimeUnit.SECONDS);
+      }
+
+      @Test
+      @DisplayName("Resolves token from auth provider config (fallback)")
+      void fallbacksToOriginalToken() {
+        assertThat(result).isEqualTo("original-token");
+      }
+
+      @Test
+      @DisplayName("Logs OpenID Connect Discovery fallback warning")
+      void logsTokenFallbackWarning() {
+        assertThat(systemErr.toString())
+            .contains("Could not refresh OIDC token, failure in getting refresh URL")
+            .contains(
+                "Cannot construct instance of `io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils$OpenIdConfiguration`");
       }
     }
 
@@ -219,8 +263,9 @@ class OpenIDConnectionUtilsBehaviorTest {
       @BeforeEach
       void setUp() {
         httpClientFactory.expect("/.well-known/openid-configuration", 200, "{" +
-            "\"issuer\": \"https://auth.example.com\"," +
-            "\"token_endpoint\": \"https://auth.example.com/token\"," +
+            "\"issuer\": \"https://auth.fabric8.example.com\"," +
+            "\"authorization_endpoint\": \"https://auth.fabric8.example.com/authorize\"," +
+            "\"token_endpoint\": \"https://auth.fabric8.example.com/token\"," +
             "\"response_types_supported\": [\"code\",\"id_token\"]" +
             "}");
       }
@@ -253,9 +298,8 @@ class OpenIDConnectionUtilsBehaviorTest {
         @Test
         @DisplayName("Logs token fallback warning")
         void logsTokenFallbackWarning() {
-          assertThat(systemErr.toString())
-              .contains(
-                  "token response did not contain an id_token, either the scope \\\"openid\\\" wasn't requested upon login, or the provider doesn't support id_tokens as part of the refresh response.");
+          assertThat(systemErr.toString()).contains(
+              "token response did not contain an id_token, either the scope \\\"openid\\\" wasn't requested upon login, or the provider doesn't support id_tokens as part of the refresh response.");
         }
       }
 
@@ -283,7 +327,7 @@ class OpenIDConnectionUtilsBehaviorTest {
         void logsJsonParsingError() {
           assertThat(systemErr.toString())
               .contains("Failure in fetching refresh token:")
-              .contains("Cannot construct instance of `java.util.LinkedHashMap`");
+              .contains("Cannot construct instance of `io.fabric8.kubernetes.client.utils.OpenIDConnectionUtils$OAuthToken`");
         }
 
         @Test
@@ -359,7 +403,7 @@ class OpenIDConnectionUtilsBehaviorTest {
 
         @Test
         @DisplayName("Certificate is loaded into HttpClient trust manager")
-        void certificateIsLoadedIntoHttpClientTrustManager() throws Exception {
+        void certificateIsLoadedIntoHttpClientTrustManager() {
           assertThat(httpClientBuilder.getTrustManagers())
               .singleElement()
               .asInstanceOf(InstanceOfAssertFactories.type(X509ExtendedTrustManager.class))
@@ -369,7 +413,146 @@ class OpenIDConnectionUtilsBehaviorTest {
               .extracting(Principal::getName)
               .contains("CN=auth.fabric8.example.com");
         }
+
+        @Test
+        @DisplayName("Token refresh request contains valid auth and form data")
+        void tokenRefreshRequestContainsValidFormData() {
+          assertThat(httpClientBuilder.build().getRecordedConsumeBytesDirects())
+              .filteredOn(r -> r.getRequest().uri().getPath().equals("/token"))
+              .singleElement()
+              .extracting(TestStandardHttpClient.RecordedConsumeBytesDirect::getRequest)
+              .hasFieldOrPropertyWithValue("method", "POST")
+              .hasFieldOrPropertyWithValue("contentType", "application/x-www-form-urlencoded")
+              .hasFieldOrPropertyWithValue("bodyString",
+                  "refresh_token=original-refresh-token&grant_type=refresh_token&client_id=id-of-test-client&client_secret=secret-of-test-client")
+              .returns("Basic aWQtb2YtdGVzdC1jbGllbnQ6c2VjcmV0LW9mLXRlc3QtY2xpZW50", r -> r.header("Authorization"));
+        }
       }
     }
+  }
+
+  @Nested
+  @DisplayName("persistOAuthToken()")
+  class PersistOAuthToken {
+
+    @TempDir
+    private Path tempDir;
+    private File kubeConfig;
+    private Config originalConfig;
+    private OpenIDConnectionUtils.OAuthToken oAuthTokenResponse;
+
+    @BeforeEach
+    void setUp() {
+      kubeConfig = tempDir.resolve("kubeconfig").toFile();
+      originalConfig = Config.empty();
+      oAuthTokenResponse = new OpenIDConnectionUtils.OAuthToken();
+      oAuthTokenResponse.setIdToken("new-token");
+      oAuthTokenResponse.setRefreshToken("new-refresh-token");
+    }
+
+    @Test
+    void skipsInMemoryWhenNoOAuthToken() {
+      persistOAuthToken(originalConfig, null, "fake.token");
+      assertThat(originalConfig)
+          .returns(null, Config::getAuthProvider);
+    }
+
+    @Test
+    void skipsInMemoryWhenOriginalConfigHasNoAuthProvider() {
+      persistOAuthToken(originalConfig, oAuthTokenResponse, "fake.token");
+      assertThat(originalConfig)
+          .returns(null, Config::getAuthProvider);
+    }
+
+    @Test
+    void updatesInMemory() {
+      originalConfig = new ConfigBuilder(originalConfig).withAuthProvider(new AuthProviderConfig()).build();
+      persistOAuthToken(originalConfig, oAuthTokenResponse, "fake.token");
+      assertThat(originalConfig)
+          .extracting(c -> c.getAuthProvider().getConfig())
+          .asInstanceOf(InstanceOfAssertFactories.map(String.class, String.class))
+          .containsOnly(
+              entry("id-token", "new-token"),
+              entry("refresh-token", "new-refresh-token"));
+    }
+
+    @Test
+    void skipsInFileWhenOriginalConfigHasNoFile() {
+      persistOAuthToken(originalConfig, oAuthTokenResponse, "fake.token");
+      assertThat(kubeConfig).doesNotExist();
+    }
+
+    @Test
+    void skipsInFileWhenOriginalConfigHasNoCurrentContext() {
+      originalConfig.setFile(kubeConfig);
+      persistOAuthToken(originalConfig, oAuthTokenResponse, "fake.token");
+      assertThat(kubeConfig).doesNotExist();
+    }
+
+    @Test
+    void logsWarningIfReferencedFileIsMissing() {
+      originalConfig.setFile(kubeConfig);
+      originalConfig = new ConfigBuilder(originalConfig)
+          .withCurrentContext(new NamedContextBuilder().withName("context").build()).build();
+      persistOAuthToken(originalConfig, oAuthTokenResponse, "fake.token");
+      assertThat(systemErr.toString())
+          .contains("oidc: failure while persisting new tokens into KUBECONFIG")
+          .contains("FileNotFoundException");
+    }
+
+    @Nested
+    @DisplayName("With valid kube config")
+    class WithValidKubeConfig {
+      @BeforeEach
+      void setUp() throws IOException {
+        Files.write(kubeConfig.toPath(), ("---" +
+            "users:\n" +
+            "- name: user\n").getBytes(StandardCharsets.UTF_8));
+      }
+
+      @Test
+      void persistsTokenInFile() throws IOException {
+        originalConfig.setFile(kubeConfig);
+        originalConfig = new ConfigBuilder(originalConfig)
+            .withCurrentContext(new NamedContextBuilder()
+                .withName("context")
+                .withNewContext().withUser("user").endContext().build())
+            .build();
+        persistOAuthToken(originalConfig, oAuthTokenResponse, "fake.token");
+        assertThat(KubeConfigUtils.parseConfig(kubeConfig))
+            .returns("fake.token", c -> c.getUsers().iterator().next().getUser().getToken());
+      }
+
+      @Test
+      void skipsTokenInFileIfNull() throws IOException {
+        originalConfig.setFile(kubeConfig);
+        originalConfig = new ConfigBuilder(originalConfig)
+            .withCurrentContext(new NamedContextBuilder()
+                .withName("context")
+                .withNewContext().withUser("user").endContext().build())
+            .build();
+        persistOAuthToken(originalConfig, oAuthTokenResponse, null);
+        assertThat(KubeConfigUtils.parseConfig(kubeConfig))
+            .returns(null, c -> c.getUsers().iterator().next().getUser().getToken());
+      }
+
+      @Test
+      void persistsOAuthTokenInFile() throws IOException {
+        originalConfig.setFile(kubeConfig);
+        originalConfig = new ConfigBuilder(originalConfig)
+            .withCurrentContext(new NamedContextBuilder()
+                .withName("context")
+                .withNewContext().withUser("user").endContext().build())
+            .build();
+        persistOAuthToken(originalConfig, oAuthTokenResponse, "fake.token");
+        assertThat(KubeConfigUtils.parseConfig(kubeConfig))
+            .extracting(c -> c.getUsers().iterator().next().getUser().getAuthProvider().getConfig())
+            .asInstanceOf(InstanceOfAssertFactories.map(String.class, String.class))
+            .containsOnly(
+                entry("id-token", "new-token"),
+                entry("refresh-token", "new-refresh-token"));
+      }
+    }
+
   }
 }

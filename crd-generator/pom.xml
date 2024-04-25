@@ -34,6 +34,7 @@
     <module>apt</module>
     <module>api</module>
     <module>api-v2</module>
+    <module>maven-plugin</module>
     <module>test</module>
   </modules>
 </project>
